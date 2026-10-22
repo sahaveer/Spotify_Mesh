@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MediaHub">
+  <meta name="theme-color" content="#0c0e14">
+  <title>Decentralized Media Hub</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Desktop Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"></polygon>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h2 id="brand-device-name">MediaHub</h2>
+          <span class="server-status" id="server-badge">Connecting...</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-view="my-device">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+          </svg>
+          <span>My Device</span>
+        </button>
+        <button class="nav-item" data-view="songs">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M9 18V5l12-2v13"></path>
+            <circle cx="6" cy="18" r="3"></circle>
+            <circle cx="18" cy="16" r="3"></circle>
+          </svg>
+          <span>Music</span>
+        </button>
+        <button class="nav-item" data-view="videos">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <line x1="2" y1="7" x2="7" y2="7"></line>
+            <line x1="2" y1="17" x2="7" y2="17"></line>
+            <line x1="17" y1="17" x2="22" y2="17"></line>
+            <line x1="17" y1="7" x2="22" y2="7"></line>
+          </svg>
+          <span>Movies & Videos</span>
+        </button>
+        <button class="nav-item" data-view="favorites">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+          <span>Favorites</span>
+        </button>
+        <button class="nav-item" data-view="downloader">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Downloader</span>
+        </button>
+        <button class="nav-item" data-view="peers">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          <span>Wi-Fi Peers</span>
+        </button>
+        <button class="nav-item" data-view="artists">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <circle cx="12" cy="7" r="4"></circle>
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          </svg>
+          <span>Artists</span>
+        </button>
+        <button class="nav-item" data-view="albums">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+          <span>Albums</span>
+        </button>
+        <button class="nav-item" data-view="playlists">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+          <span>Playlists</span>
+        </button>
+        <button class="nav-item" data-view="privacy">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <span>Privacy & Folders</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="rescan-btn" class="secondary-btn" title="Rescan Shared Folders">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          <span>Rescan Library</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Bar -->
+      <header class="top-bar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="search-input" placeholder="Search music, movies, videos..." autocomplete="off">
+          <button id="clear-search" class="icon-btn hidden">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="top-actions">
+          <div class="library-stats" id="library-stats-header">0 songs</div>
+          <button id="tv-modal-btn" class="secondary-btn" title="Stream to Smart TV / VLC">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            <span>TV & VLC</span>
+          </button>
+          <button id="qr-modal-btn" class="primary-btn" title="Connect Phone / Share QR Code">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span>Connect Phone</span>
+          </button>
+          <button id="mobile-rescan-btn" class="icon-btn mobile-only" title="Rescan Library">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Scrollable Views -->
+      <section class="content-scrollable">
+        <!-- View: My Device / My Files -->
+        <div id="view-my-device" class="view">
+          <div class="my-device-hero">
+            <div class="my-device-hero-content">
+              <div class="device-pill-tag">
+                <span class="pulse-dot"></span>
+                <span id="my-device-type-label">Your Device</span>
+              </div>
+              <h1 id="my-device-headline">My Device Library</h1>
+              <p class="hero-desc">Play phone files locally with zero lag, or 1-tap share with every TV, laptop & phone connected to this Wi-Fi mesh.</p>
+            </div>
+          </div>
+
+          <!-- Quick Action Cards Grid -->
+          <div class="device-quick-grid">
+            <div class="quick-nav-card card-share" id="quick-share-btn">
+              <div class="quick-card-icon">
+                <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="none">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+              </div>
+              <div class="quick-card-info">
+                <h3>Share from Phone / Gallery</h3>
+                <p>Upload music or video to mesh so everyone on Wi-Fi can stream it.</p>
+              </div>
+              <button class="primary-btn quick-action-btn">
+                <span>Share Files</span>
+              </button>
+            </div>
+
+            <div class="quick-nav-card card-local" id="quick-local-btn">
+              <div class="quick-card-icon">
+                <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="none">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+              </div>
+              <div class="quick-card-info">
+                <h3>Play Local Phone Files</h3>
+                <p>Instant in-browser playback with 0 MB upload or wait time.</p>
+              </div>
+              <button class="secondary-btn quick-action-btn">
+                <span>Play Local</span>
+              </button>
+            </div>
+
+            <div class="quick-nav-card card-mesh" id="quick-mesh-btn">
+              <div class="quick-card-icon">
+                <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="none">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+              </div>
+              <div class="quick-card-info">
+                <h3>Explore Shared Mesh</h3>
+                <p>Browse & stream media provided by Host PC and other peers.</p>
+              </div>
+              <button class="secondary-btn quick-action-btn">
+                <span>Browse Mesh</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Section: Instant Local Playback Session -->
+          <div class="my-media-section" id="local-session-container">
+            <div class="section-heading-row">
+              <div>
+                <h2>⚡ Local Phone Session</h2>
+                <span class="view-subtitle" id="local-tracks-count">0 local files</span>
+              </div>
+              <button id="add-more-local-btn" class="secondary-btn" style="font-size: 0.8rem; padding: 6px 12px;">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>Pick Files</span>
+              </button>
+            </div>
+            <div id="local-tracks-list" class="song-list">
+              <div class="placeholder-text" style="padding: 20px; text-align: center;">
+                <p>No local files picked yet.</p>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">Click "Play Local Phone Files" above to play songs or videos from your phone storage instantly.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: My Shared Files on Mesh -->
+          <div class="my-media-section" style="margin-top: 24px;">
+            <div class="section-heading-row">
+              <div>
+                <h2>📱 My Shared Files on Mesh</h2>
+                <span class="view-subtitle" id="my-shared-count">0 files shared by you</span>
+              </div>
+              <div class="format-toggle" style="margin: 0;">
+                <label class="toggle-option">
+                  <input type="radio" name="my-media-filter" value="all" checked>
+                  <span>All</span>
+                </label>
+                <label class="toggle-option">
+                  <input type="radio" name="my-media-filter" value="audio">
+                  <span>🎵 Music</span>
+                </label>
+                <label class="toggle-option">
+                  <input type="radio" name="my-media-filter" value="video">
+                  <span>🎬 Videos</span>
+                </label>
+              </div>
+            </div>
+            <div id="my-shared-empty" class="placeholder-text" style="padding: 30px; text-align: center;">
+              <p style="font-size: 1rem; color: var(--text-primary); margin-bottom: 6px;">You haven't shared any files yet 🚀</p>
+              <p style="font-size: 0.82rem; color: var(--text-muted); max-width: 420px; margin: 0 auto 14px;">
+                Share your favorite songs, recordings, or videos from your phone with other laptops and phones on the Wi-Fi.
+              </p>
+              <button id="empty-share-trigger-btn" class="primary-btn">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <span>Share a File Now</span>
+              </button>
+            </div>
+            <div id="my-shared-song-list" class="song-list"></div>
+            <div id="my-shared-video-grid" class="video-grid" style="margin-top: 16px;"></div>
+          </div>
+        </div>
+
+        <!-- View: Songs -->
+        <div id="view-songs" class="view">
+          <div class="view-header">
+            <div>
+              <h1>Music</h1>
+              <div class="scope-tabs" data-target="songs" style="margin-top: 6px;">
+                <button class="scope-tab active" data-scope="all">📚 All Network</button>
+                <button class="scope-tab" data-scope="mine">📱 My Uploads</button>
+                <button class="scope-tab" data-scope="shared">🌐 Host & Peers</button>
+              </div>
+            </div>
+            <div class="view-controls">
+              <select id="sort-select" class="dropdown">
+                <option value="title">Sort by Title</option>
+                <option value="artist">Sort by Artist</option>
+                <option value="album">Sort by Album</option>
+                <option value="duration">Sort by Duration</option>
+                <option value="year">Sort by Year</option>
+              </select>
+              <button id="upload-music-btn" class="secondary-btn" title="Share audio from this phone/device">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <span>Share File</span>
+              </button>
+              <button id="play-all-btn" class="primary-btn">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span>Play All</span>
+              </button>
+            </div>
+          </div>
+          <div class="song-list" id="song-list"></div>
+        </div>
+
+        <!-- View: Videos & Movies -->
+        <div id="view-videos" class="view">
+          <div class="view-header">
+            <div>
+              <h1>Movies & Videos</h1>
+              <div class="scope-tabs" data-target="videos" style="margin-top: 6px;">
+                <button class="scope-tab active" data-scope="all">📚 All Network</button>
+                <button class="scope-tab" data-scope="mine">📱 My Uploads</button>
+                <button class="scope-tab" data-scope="shared">🌐 Host & Peers</button>
+              </div>
+              <span class="view-subtitle" id="videos-count-badge" style="display:block; margin-top:4px;">0 videos</span>
+            </div>
+            <div class="view-controls">
+              <button id="upload-video-btn" class="primary-btn" title="Share video from this phone/device">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <span>Share Video</span>
+              </button>
+            </div>
+          </div>
+          <div class="video-grid" id="video-grid"></div>
+        </div>
+
+        <!-- View: Favorites -->
+        <div id="view-favorites" class="view">
+          <div class="view-header">
+            <div>
+              <h1>Favorites</h1>
+              <span class="view-subtitle" id="favorites-count-badge">0 favorites</span>
+            </div>
+            <div class="view-controls">
+              <div class="format-toggle" style="margin: 0;">
+                <label class="toggle-option">
+                  <input type="radio" name="fav-filter" value="all" checked>
+                  <span>All</span>
+                </label>
+                <label class="toggle-option">
+                  <input type="radio" name="fav-filter" value="audio">
+                  <span>🎵 Music</span>
+                </label>
+                <label class="toggle-option">
+                  <input type="radio" name="fav-filter" value="video">
+                  <span>🎬 Videos</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="favorites-empty" class="placeholder-text hidden" style="padding: 40px; text-align: center;">
+            <p style="font-size: 1.1rem; color: var(--text-primary); margin-bottom: 6px;">No favorites yet ❤️</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Click the heart icon on any song or movie to add it to your favorites!</p>
+          </div>
+          <div class="song-list" id="favorites-song-list"></div>
+          <div class="video-grid" id="favorites-video-grid" style="margin-top: 20px;"></div>
+        </div>
+
+        <!-- View: YouTube Downloader -->
+        <div id="view-downloader" class="view">
+          <div class="view-header">
+            <h1>Downloader</h1>
+            <span class="view-subtitle">Download from YouTube, YouTube Music & Spotify</span>
+          </div>
+          
+          <div class="downloader-card">
+            <div class="input-group">
+              <input type="text" id="dl-url-input" placeholder="Paste YouTube link (e.g. https://www.youtube.com/watch?v=...)" autocomplete="off">
+            </div>
+
+            <div class="downloader-options">
+              <div class="format-toggle">
+                <label class="toggle-option">
+                  <input type="radio" name="dl-format" value="audio" checked>
+                  <span>🎵 Audio (MP3/M4A)</span>
+                </label>
+                <label class="toggle-option">
+                  <input type="radio" name="dl-format" value="video">
+                  <span>🎬 Video (MP4)</span>
+                </label>
+              </div>
+
+              <select id="dl-quality-select" class="dropdown">
+                <option value="best">Best Quality</option>
+                <option value="1080p">1080p HD</option>
+                <option value="720p">720p HD</option>
+              </select>
+
+              <button id="start-download-btn" class="primary-btn">
+                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Download</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Active Downloads Queue -->
+          <div class="downloads-section">
+            <h3>Active & Recent Downloads</h3>
+            <div id="downloads-queue" class="downloads-list">
+              <p class="placeholder-text">No active downloads.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- View: Wi-Fi Peers & Connected Devices -->
+        <div id="view-peers" class="view">
+          <div class="view-header">
+            <div>
+              <h1>Wi-Fi Network & Peers</h1>
+              <span class="view-subtitle">Live devices and media servers sharing over local Wi-Fi</span>
+            </div>
+            <button id="refresh-peers-btn" class="secondary-btn">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          <div style="margin-bottom: 24px;">
+            <h3 style="margin-bottom: 12px; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+              <span>📱 Connected Mobile & Web Players</span>
+              <span id="clients-count-badge" class="view-subtitle" style="padding: 2px 8px; background: rgba(99, 102, 241, 0.2); color: #818cf8; border-radius: 12px; font-size: 0.75rem;">0</span>
+            </h3>
+            <div class="peers-list" id="clients-list"></div>
+          </div>
+
+          <div>
+            <h3 style="margin-bottom: 12px; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+              <span>💻 Mesh Media Servers</span>
+              <span id="mesh-count-badge" class="view-subtitle" style="padding: 2px 8px; background: rgba(16, 185, 129, 0.2); color: #34d399; border-radius: 12px; font-size: 0.75rem;">0</span>
+            </h3>
+            <div class="peers-list" id="peers-list"></div>
+          </div>
+        </div>
+
+        <!-- View: Privacy & Shared Folders -->
+        <div id="view-privacy" class="view">
+          <div class="view-header">
+            <h1>Privacy & Shared Folders</h1>
+            <span class="view-subtitle">Control exactly what folders you share with others</span>
+          </div>
+
+          <div class="settings-card">
+            <!-- Master Privacy Switch -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Share My Library</h3>
+                <p>When turned off (Stealth Mode), your files are hidden and cannot be seen by others on Wi-Fi.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="master-sharing-toggle" checked>
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <!-- Device Name -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Device Name</h3>
+                <p>How your device appears to others on the local Wi-Fi mesh.</p>
+              </div>
+              <div class="inline-edit">
+                <input type="text" id="device-name-input" placeholder="e.g. Sahaveer's Laptop">
+                <button id="save-device-name-btn" class="secondary-btn">Save</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Explicit Shared Folders Manager -->
+          <div class="shared-folders-section">
+            <div class="section-top">
+              <h3>Explicitly Shared Folders</h3>
+              <button id="add-folder-btn" class="primary-btn">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>Add Folder</span>
+              </button>
+            </div>
+            <div class="folder-list" id="shared-folders-list"></div>
+          </div>
+        </div>
+
+        <!-- View: Artists -->
+        <div id="view-artists" class="view">
+          <div class="view-header"><h1>Artists</h1></div>
+          <div class="grid-list" id="artists-grid"></div>
+        </div>
+
+        <!-- View: Albums -->
+        <div id="view-albums" class="view">
+          <div class="view-header"><h1>Albums</h1></div>
+          <div class="grid-list" id="albums-grid"></div>
+        </div>
+
+        <!-- View: Playlists -->
+        <div id="view-playlists" class="view">
+          <div class="view-header">
+            <h1>Playlists</h1>
+            <button id="new-playlist-btn" class="primary-btn">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>New Playlist</span>
+            </button>
+          </div>
+          <div class="grid-list" id="playlists-grid"></div>
+        </div>
+
+        <!-- View: Detail Drilldown -->
+        <div id="view-detail" class="view">
+          <button id="detail-back-btn" class="back-link">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            <span id="detail-back-label">Back</span>
+          </button>
+          <div class="detail-header" id="detail-header">
+            <div class="detail-cover-wrapper">
+              <img id="detail-cover-img" src="/icon.svg" alt="Cover">
+            </div>
+            <div class="detail-info">
+              <span class="detail-type" id="detail-type">ALBUM</span>
+              <h2 id="detail-title">Album Name</h2>
+              <p class="detail-subtitle" id="detail-subtitle">Artist Name • 2024</p>
+              <div class="detail-actions">
+                <button id="detail-play-btn" class="primary-btn">
+                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                  <span>Play</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="song-list" id="detail-song-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Mobile Bottom Nav -->
+    <nav class="mobile-bottom-nav">
+      <button class="bottom-nav-item active" data-view="my-device">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+          <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+        <span>My Files</span>
+      </button>
+      <button class="bottom-nav-item" data-view="songs">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+        <span>Music</span>
+      </button>
+      <button class="bottom-nav-item" data-view="videos">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+          <line x1="7" y1="2" x2="7" y2="22"></line>
+          <line x1="17" y1="2" x2="17" y2="22"></line>
+        </svg>
+        <span>Videos</span>
+      </button>
+      <button class="bottom-nav-item" data-view="favorites">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+        </svg>
+        <span>Favorites</span>
+      </button>
+      <button class="bottom-nav-item" data-view="downloader">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span>Download</span>
+      </button>
+      <button class="bottom-nav-item" data-view="peers">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+        </svg>
+        <span>Peers</span>
+      </button>
+      <button class="bottom-nav-item" data-view="privacy">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+        <span>Privacy</span>
+      </button>
+    </nav>
+
+    <!-- Mini Audio Player -->
+    <div class="mini-player" id="mini-player">
+      <div class="mini-progress-bar">
+        <div class="mini-progress-fill" id="mini-progress-fill"></div>
+      </div>
+      <div class="mini-player-content" id="mini-player-click-target">
+        <img id="mini-cover" src="/icon.svg" alt="Album Art" class="mini-cover">
+        <div class="mini-info">
+          <span class="mini-title" id="mini-title">No song playing</span>
+          <span class="mini-artist" id="mini-artist">Select a track to start</span>
+        </div>
+      </div>
+      <div class="mini-controls">
+        <button id="mini-love-btn" class="icon-btn love-btn" title="Add to Favorites" style="padding: 6px;">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+        </button>
+        <button id="mini-prev-btn" class="icon-btn" title="Previous">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="currentColor">
+            <polygon points="19 20 9 12 19 4 19 20"></polygon>
+            <line x1="5" y1="19" x2="5" y2="5"></line>
+          </svg>
+        </button>
+        <button id="mini-play-btn" class="play-circle-btn" title="Play/Pause">
+          <svg id="mini-play-icon" viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+        </button>
+        <button id="mini-next-btn" class="icon-btn" title="Next">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="currentColor">
+            <polygon points="5 4 15 12 5 20 5 4"></polygon>
+            <line x1="19" y1="5" x2="19" y2="19"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Full Audio Player Overlay -->
+    <div class="full-player-overlay" id="full-player">
+      <div class="full-player-backdrop"></div>
+      <div class="full-player-container">
+        <div class="full-player-top">
+          <button id="full-player-close" class="icon-btn" title="Collapse">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          <span class="full-player-header-title">Now Playing</span>
+          <button id="queue-toggle-btn" class="icon-btn" title="Up Next Queue">
+            <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="full-player-body">
+          <div class="artwork-card">
+            <img id="full-cover" src="/icon.svg" alt="Artwork">
+          </div>
+
+          <div class="track-meta" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div class="track-text" style="min-width: 0; flex: 1;">
+              <h2 id="full-title">Song Title</h2>
+              <p id="full-artist">Artist Name</p>
+              <p id="full-album" class="album-label">Album Title</p>
+            </div>
+            <button id="full-love-btn" class="icon-btn love-btn" title="Add to Favorites" style="padding: 10px; flex-shrink: 0;">
+              <svg viewBox="0 0 24 24" width="26" height="26" stroke="currentColor" stroke-width="2" fill="none">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="progress-section">
+            <div class="seek-slider-container">
+              <input type="range" id="seek-slider" min="0" max="100" value="0" step="0.1">
+            </div>
+            <div class="time-display">
+              <span id="current-time">0:00</span>
+              <span id="total-duration">0:00</span>
+            </div>
+          </div>
+
+          <div class="playback-controls">
+            <button id="shuffle-btn" class="icon-btn" title="Shuffle">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+                <polyline points="16 3 21 3 21 8"></polyline>
+                <line x1="4" y1="20" x2="21" y2="3"></line>
+                <polyline points="21 16 21 21 16 21"></polyline>
+                <line x1="15" y1="15" x2="21" y2="21"></line>
+                <line x1="4" y1="4" x2="9" y2="9"></line>
+              </svg>
+            </button>
+            <button id="prev-btn" class="icon-btn control-skip" title="Previous Track">
+              <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="currentColor">
+                <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                <line x1="5" y1="19" x2="5" y2="5"></line>
+              </svg>
+            </button>
+            <button id="play-btn" class="main-play-btn" title="Play/Pause">
+              <svg id="full-play-icon" viewBox="0 0 24 24" width="36" height="36" stroke="currentColor" stroke-width="2" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </button>
+            <button id="next-btn" class="icon-btn control-skip" title="Next Track">
+              <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="currentColor">
+                <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                <line x1="19" y1="5" x2="19" y2="19"></line>
+              </svg>
+            </button>
+            <button id="repeat-btn" class="icon-btn" title="Repeat">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+                <polyline points="17 1 21 5 17 9"></polyline>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                <polyline points="7 23 3 19 7 15"></polyline>
+                <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="volume-container">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+            <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
+          </div>
+        </div>
+
+        <div class="queue-panel hidden" id="queue-panel">
+          <div class="queue-header">
+            <h3>Up Next Queue</h3>
+            <button id="clear-queue-btn" class="text-btn">Clear</button>
+          </div>
+          <div class="queue-list" id="queue-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Video Player Fullscreen Modal -->
+    <div class="video-modal-overlay hidden" id="video-player-modal">
+      <div class="video-modal-header">
+        <h3 id="video-modal-title">Movie Title</h3>
+        <button id="video-modal-close" class="icon-btn">
+          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="video-modal-body">
+        <video id="video-engine" controls playsinline preload="metadata"></video>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Element -->
+  <audio id="audio-engine" preload="auto"></audio>
+
+  <!-- Add to Playlist Modal -->
+  <div class="modal-overlay hidden" id="playlist-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="playlist-modal-title">Add to Playlist</h3>
+        <button id="playlist-modal-close" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body" id="playlist-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- QR Code Connect Modal -->
+  <div class="modal-overlay hidden" id="qr-modal">
+    <div class="modal-card qr-card">
+      <div class="modal-header">
+        <h3>Connect Phone / Device</h3>
+        <button id="qr-modal-close" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body qr-body" style="text-align: center; padding: 12px 0;">
+        <div style="background: #ffffff; padding: 14px; border-radius: 16px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+          <img id="qr-code-img" src="/api/qr" alt="QR Code" style="width: 220px; height: 220px; display: block;">
+        </div>
+        <p style="font-size: 0.88rem; color: var(--text-secondary); margin: 16px 0 10px;">
+          Point your iPhone or Android camera at this QR code to stream over Wi-Fi with 0 MB internet!
+        </p>
+        <div id="qr-ip-selector-container" style="margin-bottom: 12px; text-align: left;">
+          <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Network Address (Wi-Fi / Hotspot):</label>
+          <select id="qr-ip-select" class="dropdown" style="width: 100%; font-size: 0.85rem; padding: 8px 12px;"></select>
+        </div>
+        <div style="background: var(--bg-surface); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <span id="qr-connect-url" style="font-family: monospace; font-size: 0.85rem; color: #a5b4fc; word-break: break-all;">http://192.168.1.6:8000</span>
+          <button id="copy-qr-url-btn" class="secondary-btn" style="padding: 6px 12px; font-size: 0.78rem;">Copy</button>
+        </div>
+        <button id="share-link-btn" class="primary-btn" style="width: 100%; justify-content: center; margin-top: 14px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          <span>Share Link with Friends</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smart TV & VLC Streaming Modal -->
+  <div class="modal-overlay hidden" id="tv-modal">
+    <div class="modal-card" style="max-width: 540px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <svg viewBox="0 0 24 24" width="22" height="22" stroke="var(--accent)" stroke-width="2" fill="none">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <h3>Smart TV & VLC Streaming</h3>
+        </div>
+        <button id="tv-modal-close" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 0;">
+        <div style="margin-bottom: 20px;">
+          <a href="/tv" target="_blank" class="primary-btn" style="width: 100%; justify-content: center; padding: 14px; font-size: 1rem; text-decoration: none;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+              <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"></polygon>
+            </svg>
+            <span>Launch Smart TV 10-Foot Player (/tv)</span>
+          </a>
+          <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top: 6px;">
+            Open on your TV browser (Android TV, Fire TV Silk, Samsung, LG webOS) for remote-friendly navigation.
+          </p>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 16px;">
+          <h4 style="font-size: 0.95rem; margin-bottom: 10px;">📺 VLC Media Player / IPTV Playlist URLs</h4>
+          <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 12px;">
+            In VLC (on Android TV, Fire TV, Apple TV, PC), go to <strong>Media ➔ Open Network Stream</strong> and paste:
+          </p>
+
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div style="background: var(--bg-surface); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <div>
+                <strong style="font-size: 0.82rem; display: block;">All Media (Movies & Music):</strong>
+                <span id="tv-m3u-all-url" style="font-family: monospace; font-size: 0.8rem; color: #a5b4fc;">http://192.168.1.6:8000/api/playlist.m3u</span>
+              </div>
+              <button class="secondary-btn copy-m3u-btn" data-target="tv-m3u-all-url" style="padding: 6px 12px; font-size: 0.78rem;">Copy</button>
+            </div>
+
+            <div style="background: var(--bg-surface); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <div>
+                <strong style="font-size: 0.82rem; display: block;">Movies & Videos Only:</strong>
+                <span id="tv-m3u-movies-url" style="font-family: monospace; font-size: 0.8rem; color: #a5b4fc;">http://192.168.1.6:8000/api/playlist/movies.m3u</span>
+              </div>
+              <button class="secondary-btn copy-m3u-btn" data-target="tv-m3u-movies-url" style="padding: 6px 12px; font-size: 0.78rem;">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden File Input for Phone/Device Uploads & Instant Local Playback -->
+  <input type="file" id="media-upload-input" multiple accept="audio/*,video/*,.mp3,.flac,.m4a,.wav,.mp4,.mkv,.webm,.mov" style="display: none;">
+  <input type="file" id="local-playback-input" multiple accept="audio/*,video/*,.mp3,.flac,.m4a,.wav,.mp4,.mkv,.webm,.mov" style="display: none;">
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{
+  "name": "MediaHub",
+  "short_name": "MediaHub",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0e14",
+  "theme_color": "#0c0e14",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "share_target": {
+    "action": "/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "files",
+          "accept": [
+            "video/*",
+            "audio/*",
+            ".mp4",
+            ".mkv",
+            ".mov",
+            ".webm",
+            ".mp3",
+            ".m4a",
+            ".flac",
+            ".wav"
+          ]
+        }
+      ]
+    }
+  }
+}

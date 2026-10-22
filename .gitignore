@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+venv/
+.venv/
+env/
+data/cache/
+data/test_music/
+data/test_videos/
+data/*.wav
+data/*.mp3
+data/*.mp4
+data/*.mkv
+.DS_Store
+Thumbs.db
