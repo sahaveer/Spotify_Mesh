@@ -58,7 +58,8 @@ def stream_audio(file_path: str, request: Request, mime_type: str = "audio/mpeg"
     if is_download:
         safe_name = download_filename or os.path.basename(file_path)
         encoded_name = urllib.parse.quote(safe_name)
-        headers["Content-Disposition"] = f'attachment; filename="{safe_name}"; filename*=UTF-8\'\'{encoded_name}'
+        ascii_fallback = safe_name.encode('ascii', 'ignore').decode('ascii').replace('"', '') or 'media_file'
+        headers["Content-Disposition"] = f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded_name}'
 
     if range_header:
         start, end, content_length = parse_range_header(range_header, file_size)

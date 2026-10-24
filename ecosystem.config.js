@@ -1,9 +1,21 @@
+const fs = require('fs');
+const path = require('path');
+
+let interpreter = process.platform === 'win32' ? 'python' : 'python3';
+if (process.platform !== 'win32') {
+  if (fs.existsSync(path.join(__dirname, 'venv', 'bin', 'python3'))) {
+    interpreter = 'venv/bin/python3';
+  } else if (fs.existsSync(path.join(__dirname, '.venv', 'bin', 'python3'))) {
+    interpreter = '.venv/bin/python3';
+  }
+}
+
 module.exports = {
   apps: [
     {
       name: "media-player",
       script: "run_server.py",
-      interpreter: process.platform === "win32" ? "python" : "venv/bin/python3",
+      interpreter: interpreter,
       autorestart: true,
       max_restarts: 10,
       restart_delay: 5000,

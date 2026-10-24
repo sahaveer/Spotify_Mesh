@@ -1,29 +1,21 @@
 {
   "device_id": "eea29866-3c96-4aec-b81d-e254d0a904db",
-  "device_name": "Test Hub Node",
+  "device_name": "MediaHub Server",
   "sharing_enabled": true,
-  "download_dir": "C:\\Users\\Sahaveer\\Music",
+  "download_dir": "D:\\MEDIA PLAYER\\MUSIC",
   "shared_folders": [
-    {
-      "id": "0d9fca9c-2947-4e7f-9d21-b27d9ff0eeb0",
-      "path": "C:\\Users\\Sahaveer\\PycharmProjects\\MediaPlayer\\data\\test_videos",
-      "name": "Test Videos",
-      "type": "video",
-      "enabled": true
-    },
     {
       "id": "9e191a67-b053-48f1-8f1f-234b60b2d887",
       "path": "D:\\MEDIA PLAYER",
-      "name": "My Server Folder",
+      "name": "CasaOS Media Library",
       "type": "both",
       "enabled": true
-    },
-    {
-      "id": "26f550ec-238d-4b76-a5e0-ac14c8ba2589",
-      "path": "C:\\Users\\Sahaveer\\PycharmProjects\\MediaPlayer\\data\\test_music",
-      "name": "Test Music",
-      "type": "music",
-      "enabled": true
     }
-  ]
+  ],
+  "global_access_enabled": true,
+  "global_tunnel_token": "",
+  "trust_tailscale_admin": true,
+  "admin_token": "",
+  "upload_approval_required": false,
+  "trust_lan_admin": false
 }

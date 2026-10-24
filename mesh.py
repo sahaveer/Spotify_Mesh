@@ -99,7 +99,8 @@ def start_mesh_service(port: int = config.PORT):
             "device_name": device_name,
             "music_count": str(stats["total_songs"]),
             "video_count": str(stats["total_videos"]),
-            "version": "1.0.0"
+            "photo_count": str(stats.get("total_photos", 0)),
+            "version": "2.0.0"
         }
 
         # Safe service name
@@ -136,12 +137,23 @@ def get_active_peers() -> List[Dict[str, Any]]:
         return list(_discovered_peers.values())
 
 def fetch_peer_library(peer_url: str) -> Dict[str, Any]:
-    """Fetches remote peer's public music and video list."""
+    """Fetches remote peer's public songs, videos, and photos."""
+    result = {"songs": [], "photos": [], "count": 0}
     try:
-        req = urllib.request.Request(f"{peer_url}/api/songs", headers={"User-Agent": "MediaMesh/1.0"})
+        req = urllib.request.Request(f"{peer_url}/api/songs", headers={"User-Agent": "MediaMesh/2.0"})
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode())
-            return data
+            result["songs"] = data.get("songs", [])
+            result["count"] = data.get("count", len(result["songs"]))
     except Exception as e:
-        logger.debug(f"Failed to fetch library from peer {peer_url}: {e}")
-        return {"songs": [], "count": 0}
+        logger.debug(f"Failed to fetch songs from peer {peer_url}: {e}")
+
+    try:
+        req_p = urllib.request.Request(f"{peer_url}/api/photos", headers={"User-Agent": "MediaMesh/2.0"})
+        with urllib.request.urlopen(req_p, timeout=3) as resp:
+            p_data = json.loads(resp.read().decode())
+            result["photos"] = p_data.get("photos", [])
+    except Exception as e:
+        logger.debug(f"Failed to fetch photos from peer {peer_url}: {e}")
+
+    return result

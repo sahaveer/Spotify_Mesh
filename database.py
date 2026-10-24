@@ -5,7 +5,11 @@ from typing import List, Optional, Dict, Any
 from config import DB_PATH
 
 def get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30.0)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except Exception:
+        pass
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -48,12 +52,18 @@ def init_db():
             cursor.execute("ALTER TABLE songs ADD COLUMN owner_id TEXT DEFAULT 'host'")
         if "owner_name" not in existing_cols:
             cursor.execute("ALTER TABLE songs ADD COLUMN owner_name TEXT DEFAULT 'Host'")
+        if "season" not in existing_cols:
+            cursor.execute("ALTER TABLE songs ADD COLUMN season INTEGER")
+        if "episode" not in existing_cols:
+            cursor.execute("ALTER TABLE songs ADD COLUMN episode INTEGER")
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_album ON songs(album)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_title ON songs(title)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_media_type ON songs(media_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_owner_id ON songs(owner_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_year ON songs(year)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_resolution ON songs(resolution)")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS playlists (
@@ -85,17 +95,98 @@ def init_db():
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_favorites_client ON favorites(client_id)")
+
+        # Photos Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS photos (
+                id TEXT PRIMARY KEY,
+                path TEXT UNIQUE,
+                title TEXT,
+                album TEXT,
+                date_taken TEXT,
+                year INTEGER,
+                month INTEGER,
+                width INTEGER,
+                height INTEGER,
+                filesize INTEGER,
+                mtime REAL,
+                thumb_hash TEXT,
+                camera_make TEXT,
+                camera_model TEXT,
+                mime_type TEXT,
+                owner_id TEXT DEFAULT 'host',
+                owner_name TEXT DEFAULT 'Host'
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_date ON photos(date_taken)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_year_month ON photos(year, month)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_owner ON photos(owner_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_album ON photos(album)")
+
+        # Pending Uploads (Approval Queue) Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pending_uploads (
+                id TEXT PRIMARY KEY,
+                filename TEXT NOT NULL,
+                staging_path TEXT NOT NULL,
+                filesize INTEGER,
+                media_type TEXT DEFAULT 'audio',
+                owner_id TEXT DEFAULT 'host',
+                owner_name TEXT DEFAULT 'Host',
+                target_folder TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_uploads(status)")
+
+        # 24-Hour Ephemeral Statuses (Stories / Worker Updates)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS statuses (
+                id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                owner_name TEXT NOT NULL,
+                caption TEXT DEFAULT '',
+                file_path TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                filesize INTEGER DEFAULT 0,
+                mime_type TEXT DEFAULT 'image/jpeg',
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                is_saved INTEGER DEFAULT 0,
+                saved_photo_id TEXT
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_statuses_expires ON statuses(expires_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_statuses_owner ON statuses(owner_id)")
         conn.commit()
 
 def upsert_song(song_data: Dict[str, Any]):
-    if "media_type" not in song_data:
-        song_data["media_type"] = "audio"
-    if "resolution" not in song_data:
-        song_data["resolution"] = None
-    if "owner_id" not in song_data or not song_data["owner_id"]:
-        song_data["owner_id"] = "host"
-    if "owner_name" not in song_data or not song_data["owner_name"]:
-        song_data["owner_name"] = "Host"
+    defaults = {
+        "title": "Unknown Title",
+        "artist": "Unknown Artist",
+        "album": "Unknown Album",
+        "album_artist": song_data.get("artist") or "Unknown Artist",
+        "year": None,
+        "genre": "Unknown",
+        "track_number": 1,
+        "disc_number": 1,
+        "duration": 0.0,
+        "bitrate": 128,
+        "filesize": 0,
+        "mtime": 0.0,
+        "cover_hash": None,
+        "mime_type": "audio/mpeg",
+        "media_type": "audio",
+        "resolution": None,
+        "season": None,
+        "episode": None,
+        "owner_id": "host",
+        "owner_name": "Host"
+    }
+    for k, v in defaults.items():
+        if k not in song_data:
+            song_data[k] = v
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -103,11 +194,11 @@ def upsert_song(song_data: Dict[str, Any]):
             INSERT INTO songs (
                 id, path, title, artist, album, album_artist, year, genre,
                 track_number, disc_number, duration, bitrate, filesize, mtime, cover_hash, mime_type,
-                media_type, resolution, owner_id, owner_name
+                media_type, resolution, season, episode, owner_id, owner_name
             ) VALUES (
                 :id, :path, :title, :artist, :album, :album_artist, :year, :genre,
                 :track_number, :disc_number, :duration, :bitrate, :filesize, :mtime, :cover_hash, :mime_type,
-                :media_type, :resolution, :owner_id, :owner_name
+                :media_type, :resolution, :season, :episode, :owner_id, :owner_name
             )
             ON CONFLICT(path) DO UPDATE SET
                 title = excluded.title,
@@ -126,6 +217,8 @@ def upsert_song(song_data: Dict[str, Any]):
                 mime_type = excluded.mime_type,
                 media_type = excluded.media_type,
                 resolution = excluded.resolution,
+                season = excluded.season,
+                episode = excluded.episode,
                 owner_id = CASE WHEN excluded.owner_id IS NOT NULL AND excluded.owner_id != 'host' THEN excluded.owner_id ELSE COALESCE(songs.owner_id, 'host') END,
                 owner_name = CASE WHEN excluded.owner_id IS NOT NULL AND excluded.owner_id != 'host' THEN excluded.owner_name ELSE COALESCE(songs.owner_name, 'Host') END
         """, song_data)
@@ -169,6 +262,7 @@ def clear_all_media():
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM songs")
+        cursor.execute("DELETE FROM photos")
         conn.commit()
 
 def delete_songs_not_in_paths(valid_paths: List[str]):
@@ -181,6 +275,18 @@ def delete_songs_not_in_paths(valid_paths: List[str]):
         
         if to_delete:
             cursor.executemany("DELETE FROM songs WHERE path = ?", [(p,) for p in to_delete])
+            conn.commit()
+
+def delete_photos_not_in_paths(valid_paths: List[str]):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT path FROM photos")
+        all_db_paths = [row["path"] for row in cursor.fetchall()]
+        valid_set = set(valid_paths)
+        to_delete = [p for p in all_db_paths if p not in valid_set]
+
+        if to_delete:
+            cursor.executemany("DELETE FROM photos WHERE path = ?", [(p,) for p in to_delete])
             conn.commit()
 
 def get_song(song_id: str, client_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -214,6 +320,10 @@ def get_songs(
     client_id: Optional[str] = None,
     favorites_only: bool = False,
     scope: str = "all",  # 'all', 'mine', 'shared'
+    year: Optional[int] = None,
+    decade: Optional[str] = None,
+    resolution: Optional[str] = None,
+    video_category: Optional[str] = None,
     limit: int = 2000,
     offset: int = 0
 ) -> List[Dict[str, Any]]:
@@ -244,10 +354,18 @@ def get_songs(
 
         if scope == "mine" and client_id:
             if client_id == "host":
-                sql += " AND songs.owner_id = 'host'"
+                sql += " AND (songs.owner_id = 'host' OR songs.owner_id IS NULL)"
             else:
                 sql += " AND songs.owner_id = ?"
                 params.append(client_id)
+        elif scope == "server":
+            sql += " AND (songs.owner_id = 'host' OR songs.owner_id IS NULL)"
+        elif scope == "peers":
+            sql += " AND songs.owner_id != 'host' AND songs.owner_id IS NOT NULL"
+        elif scope.startswith("peer:"):
+            target_peer = scope.split(":", 1)[1]
+            sql += " AND songs.owner_id = ?"
+            params.append(target_peer)
         elif scope == "shared" and client_id:
             if client_id == "host":
                 sql += " AND songs.owner_id != 'host'"
@@ -272,13 +390,41 @@ def get_songs(
             sql += " AND genre = ?"
             params.append(genre)
 
-        allowed_sorts = {"title", "artist", "album", "year", "duration", "track_number", "filesize"}
+        if year is not None:
+            sql += " AND songs.year = ?"
+            params.append(year)
+
+        if decade:
+            if decade == "2020s":
+                sql += " AND songs.year >= 2020"
+            elif decade == "2010s":
+                sql += " AND songs.year >= 2010 AND songs.year < 2020"
+            elif decade == "2000s":
+                sql += " AND songs.year >= 2000 AND songs.year < 2010"
+            elif decade == "1990s":
+                sql += " AND songs.year >= 1990 AND songs.year < 2000"
+            elif decade == "classic":
+                sql += " AND songs.year < 1990 AND songs.year IS NOT NULL"
+
+        if resolution:
+            sql += " AND songs.resolution LIKE ?"
+            params.append(f"%{resolution}%")
+
+        if video_category:
+            if video_category == "movies":
+                sql += " AND (songs.genre = 'Movie' OR (songs.season IS NULL AND songs.genre != 'TV Show'))"
+            elif video_category == "tv":
+                sql += " AND (songs.genre = 'TV Show' OR songs.season IS NOT NULL)"
+
+        allowed_sorts = {"title", "artist", "album", "year", "duration", "track_number", "filesize", "mtime"}
         if sort_by not in allowed_sorts:
             sort_by = "title"
 
         order = "ASC" if ascending else "DESC"
         if sort_by == "track_number":
             sql += f" ORDER BY disc_number {order}, track_number {order}, title {order}"
+        elif sort_by == "year":
+            sql += f" ORDER BY (songs.year IS NULL), songs.year {order}, title ASC"
         else:
             sql += f" ORDER BY {sort_by} {order}"
 
@@ -292,8 +438,56 @@ def get_songs(
             r["is_owner"] = bool(r.get("is_owner", 0))
         return rows
 
-def get_videos(query: Optional[str] = None, sort_by: str = "title", ascending: bool = True, client_id: Optional[str] = None, favorites_only: bool = False, scope: str = "all", limit: int = 500, offset: int = 0) -> List[Dict[str, Any]]:
-    return get_songs(query=query, media_type="video", sort_by=sort_by, ascending=ascending, client_id=client_id, favorites_only=favorites_only, scope=scope, limit=limit, offset=offset)
+def get_videos(
+    query: Optional[str] = None,
+    sort_by: str = "title",
+    ascending: bool = True,
+    client_id: Optional[str] = None,
+    favorites_only: bool = False,
+    scope: str = "all",
+    year: Optional[int] = None,
+    decade: Optional[str] = None,
+    resolution: Optional[str] = None,
+    video_category: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    return get_songs(
+        query=query,
+        media_type="video",
+        sort_by=sort_by,
+        ascending=ascending,
+        client_id=client_id,
+        favorites_only=favorites_only,
+        scope=scope,
+        year=year,
+        decade=decade,
+        resolution=resolution,
+        video_category=video_category,
+        limit=limit,
+        offset=offset
+    )
+
+def update_media(media_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    allowed_fields = {
+        "title", "artist", "album", "album_artist", "year", "genre",
+        "track_number", "disc_number", "resolution", "season", "episode"
+    }
+    set_clauses = []
+    params = []
+    for k, v in updates.items():
+        if k in allowed_fields:
+            set_clauses.append(f"{k} = ?")
+            params.append(v)
+    if not set_clauses:
+        return get_song(media_id)
+
+    params.append(media_id)
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE songs SET {', '.join(set_clauses)} WHERE id = ?", params)
+        conn.commit()
+    return get_song(media_id)
 
 def get_artists() -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
@@ -356,9 +550,21 @@ def get_stats() -> Dict[str, Any]:
             FROM songs
         """)
         row = cursor.fetchone()
-        return dict(row) if row else {
+        stats = dict(row) if row else {
             "total_songs": 0, "total_videos": 0, "total_artists": 0, "total_albums": 0, "total_duration": 0, "total_size": 0
         }
+
+        # Photos Stats
+        cursor.execute("SELECT COUNT(*), COALESCE(SUM(filesize), 0) FROM photos")
+        p_row = cursor.fetchone()
+        stats["total_photos"] = p_row[0] if p_row else 0
+        stats["total_photo_size"] = p_row[1] if p_row else 0
+
+        # Pending Uploads Count
+        cursor.execute("SELECT COUNT(*) FROM pending_uploads WHERE status = 'pending'")
+        stats["pending_uploads"] = cursor.fetchone()[0]
+
+        return stats
 
 # Playlists
 def create_playlist(name: str) -> str:
@@ -409,3 +615,315 @@ def delete_playlist(playlist_id: str):
         cursor.execute("DELETE FROM playlist_songs WHERE playlist_id = ?", (playlist_id,))
         cursor.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
         conn.commit()
+
+# --- Photos Management ---
+def upsert_photo(photo_data: Dict[str, Any]):
+    if "owner_id" not in photo_data or not photo_data["owner_id"]:
+        photo_data["owner_id"] = "host"
+    if "owner_name" not in photo_data or not photo_data["owner_name"]:
+        photo_data["owner_name"] = "Host"
+    if "album" not in photo_data or not photo_data["album"]:
+        photo_data["album"] = "Camera / Uploads"
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO photos (
+                id, path, title, album, date_taken, year, month,
+                width, height, filesize, mtime, thumb_hash,
+                camera_make, camera_model, mime_type, owner_id, owner_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(path) DO UPDATE SET
+                title=excluded.title,
+                album=excluded.album,
+                date_taken=excluded.date_taken,
+                year=excluded.year,
+                month=excluded.month,
+                width=excluded.width,
+                height=excluded.height,
+                filesize=excluded.filesize,
+                mtime=excluded.mtime,
+                thumb_hash=excluded.thumb_hash,
+                camera_make=excluded.camera_make,
+                camera_model=excluded.camera_model,
+                mime_type=excluded.mime_type,
+                owner_id=excluded.owner_id,
+                owner_name=excluded.owner_name
+        """, (
+            photo_data["id"],
+            photo_data["path"],
+            photo_data.get("title", ""),
+            photo_data.get("album", "Camera / Uploads"),
+            photo_data.get("date_taken"),
+            photo_data.get("year"),
+            photo_data.get("month"),
+            photo_data.get("width"),
+            photo_data.get("height"),
+            photo_data.get("filesize", 0),
+            photo_data.get("mtime", 0.0),
+            photo_data.get("thumb_hash"),
+            photo_data.get("camera_make"),
+            photo_data.get("camera_model"),
+            photo_data.get("mime_type", "image/jpeg"),
+            photo_data.get("owner_id", "host"),
+            photo_data.get("owner_name", "Host")
+        ))
+        conn.commit()
+
+def get_photos(
+    query: Optional[str] = None,
+    album: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    client_id: Optional[str] = None,
+    favorites_only: bool = False,
+    scope: str = "all",
+    limit: int = 500,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        sql = """
+            SELECT p.*,
+                   CASE WHEN f.media_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
+            FROM photos p
+            LEFT JOIN favorites f ON p.id = f.media_id AND f.client_id = ?
+            WHERE 1=1
+        """
+        params: List[Any] = [client_id or ""]
+
+        if query:
+            sql += " AND (p.title LIKE ? OR p.album LIKE ? OR p.camera_model LIKE ?)"
+            term = f"%{query}%"
+            params.extend([term, term, term])
+
+        if album:
+            sql += " AND p.album = ?"
+            params.append(album)
+
+        if year:
+            sql += " AND p.year = ?"
+            params.append(year)
+
+        if month:
+            sql += " AND p.month = ?"
+            params.append(month)
+
+        if favorites_only:
+            sql += " AND f.media_id IS NOT NULL"
+
+        if scope == "mine" and client_id:
+            if client_id == "host":
+                sql += " AND (p.owner_id = 'host' OR p.owner_id IS NULL)"
+            else:
+                sql += " AND p.owner_id = ?"
+                params.append(client_id)
+        elif scope == "server":
+            sql += " AND (p.owner_id = 'host' OR p.owner_id IS NULL)"
+        elif scope == "peers":
+            sql += " AND p.owner_id != 'host' AND p.owner_id IS NOT NULL"
+        elif scope.startswith("peer:"):
+            target_peer = scope.split(":", 1)[1]
+            sql += " AND p.owner_id = ?"
+            params.append(target_peer)
+        elif scope == "shared" and client_id:
+            if client_id == "host":
+                sql += " AND p.owner_id != 'host'"
+            else:
+                sql += " AND (p.owner_id != ? OR p.owner_id IS NULL)"
+                params.append(client_id)
+
+        sql += " ORDER BY p.date_taken DESC, p.mtime DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(sql, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_photo(photo_id: str, client_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        sql = """
+            SELECT p.*,
+                   CASE WHEN f.media_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
+            FROM photos p
+            LEFT JOIN favorites f ON p.id = f.media_id AND f.client_id = ?
+            WHERE p.id = ?
+        """
+        cursor.execute(sql, (client_id or "", photo_id))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+def delete_photo(photo_id: str) -> bool:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM favorites WHERE media_id = ?", (photo_id,))
+        cursor.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def get_photo_timeline() -> List[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT year, month, COUNT(*) as count
+            FROM photos
+            WHERE year IS NOT NULL AND month IS NOT NULL
+            GROUP BY year, month
+            ORDER BY year DESC, month DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_photo_albums() -> List[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT album, COUNT(*) as count, MAX(date_taken) as latest_date, MIN(thumb_hash) as cover_thumb
+            FROM photos
+            GROUP BY album
+            ORDER BY count DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+# --- Pending Uploads (Approval Queue) ---
+def add_pending_upload(
+    upload_id: str,
+    filename: str,
+    staging_path: str,
+    filesize: int,
+    media_type: str = "audio",
+    owner_id: str = "host",
+    owner_name: str = "Host",
+    target_folder: Optional[str] = None
+) -> str:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO pending_uploads (
+                id, filename, staging_path, filesize, media_type,
+                owner_id, owner_name, target_folder, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+        """, (
+            upload_id, filename, staging_path, filesize, media_type,
+            owner_id, owner_name, target_folder
+        ))
+        conn.commit()
+    return upload_id
+
+def get_pending_uploads(status: str = "pending") -> List[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM pending_uploads
+            WHERE status = ?
+            ORDER BY created_at DESC
+        """, (status,))
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_pending_upload(upload_id: str) -> Optional[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM pending_uploads WHERE id = ?", (upload_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+def update_pending_upload_status(upload_id: str, status: str):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE pending_uploads SET status = ? WHERE id = ?", (status, upload_id))
+        conn.commit()
+
+def delete_pending_upload(upload_id: str):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM pending_uploads WHERE id = ?", (upload_id,))
+        conn.commit()
+
+def get_peers_with_media() -> List[Dict[str, str]]:
+    """Returns distinct peers who have uploaded media (excluding the main host server)."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT owner_id, COALESCE(owner_name, 'Unknown Peer')
+            FROM songs
+            WHERE owner_id != 'host' AND owner_id IS NOT NULL
+            UNION
+            SELECT DISTINCT owner_id, COALESCE(owner_name, 'Unknown Peer')
+            FROM photos
+            WHERE owner_id != 'host' AND owner_id IS NOT NULL
+        """)
+        return [{"id": r[0], "name": r[1]} for r in cursor.fetchall()]
+
+# --- 24-Hour Ephemeral Statuses (Stories / Field Updates) ---
+def add_status(
+    status_id: str,
+    owner_id: str,
+    owner_name: str,
+    caption: str,
+    file_path: str,
+    filename: str,
+    filesize: int,
+    mime_type: str,
+    created_at: float,
+    expires_at: float
+) -> str:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO statuses (
+                id, owner_id, owner_name, caption, file_path, filename,
+                filesize, mime_type, created_at, expires_at, is_saved
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        """, (
+            status_id, owner_id, owner_name, caption, file_path, filename,
+            filesize, mime_type, created_at, expires_at
+        ))
+        conn.commit()
+    return status_id
+
+def get_active_statuses(now: float) -> List[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM statuses
+            WHERE expires_at > ?
+            ORDER BY created_at ASC
+        """, (now,))
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_status(status_id: str) -> Optional[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM statuses WHERE id = ?", (status_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+def mark_status_saved(status_id: str, saved_photo_id: Optional[str] = None):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE statuses
+            SET is_saved = 1, saved_photo_id = ?
+            WHERE id = ?
+        """, (saved_photo_id, status_id))
+        conn.commit()
+
+def delete_status(status_id: str):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM statuses WHERE id = ?", (status_id,))
+        conn.commit()
+
+def cleanup_expired_statuses(now: float) -> List[str]:
+    """
+    Deletes expired status records from DB and returns a list of file paths to remove from disk.
+    If a status was marked is_saved == 1, its permanent copy already lives in the photos directory,
+    so the temporary status staging file can also be safely pruned.
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_path FROM statuses WHERE expires_at <= ?", (now,))
+        paths = [r[0] for r in cursor.fetchall() if r[0]]
+        cursor.execute("DELETE FROM statuses WHERE expires_at <= ?", (now,))
+        conn.commit()
+        return paths
+

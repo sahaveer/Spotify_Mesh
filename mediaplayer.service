@@ -1,0 +1,19 @@
+[Unit]
+Description=Decentralized Media Hub & Streaming Server
+After=network.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Replace 'ubuntu' or 'user' with your actual Linux username
+User=%I
+WorkingDirectory=/opt/mediaplayer
+# Adjust path to your python binary / virtualenv
+ExecStart=/opt/mediaplayer/venv/bin/python run_server.py
+Restart=always
+RestartSec=5
+Environment=PORT=8000
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

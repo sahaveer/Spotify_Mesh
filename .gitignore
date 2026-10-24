@@ -8,9 +8,15 @@ env/
 data/cache/
 data/test_music/
 data/test_videos/
+data/test_photos/
+data/test_dl/
+data/staging/
+data/statuses/
 data/*.wav
 data/*.mp3
 data/*.mp4
 data/*.mkv
 .DS_Store
 Thumbs.db
+bin/
+

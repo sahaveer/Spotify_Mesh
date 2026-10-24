@@ -11,7 +11,7 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="apple-touch-icon" href="/icon.svg">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=2.2">
 </head>
 <body>
   <div class="app-layout">
@@ -58,6 +58,14 @@
             <line x1="17" y1="7" x2="22" y2="7"></line>
           </svg>
           <span>Movies & Videos</span>
+        </button>
+        <button class="nav-item" data-view="photos">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+          <span>Photos</span>
         </button>
         <button class="nav-item" data-view="favorites">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none">
@@ -146,6 +154,10 @@
 
         <div class="top-actions">
           <div class="library-stats" id="library-stats-header">0 songs</div>
+          <button id="network-mode-pill" class="secondary-btn" title="View Network Status (Mesh / Global)" style="padding: 6px 10px; font-size: 0.78rem; border-radius: 20px; display: inline-flex; align-items: center; gap: 6px;">
+            <span id="network-mode-icon">📶</span>
+            <span id="network-mode-text">Mesh Mode</span>
+          </button>
           <button id="tv-modal-btn" class="secondary-btn" title="Stream to Smart TV / VLC">
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
               <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
@@ -178,9 +190,10 @@
         <div id="view-my-device" class="view">
           <div class="my-device-hero">
             <div class="my-device-hero-content">
-              <div class="device-pill-tag">
+              <div class="device-pill-tag" id="edit-user-name-trigger" title="Click to edit your display name" style="cursor: pointer;">
                 <span class="pulse-dot"></span>
                 <span id="my-device-type-label">Your Device</span>
+                <span style="font-size: 0.72rem; opacity: 0.7; margin-left: 6px;">✏️ Edit Name</span>
               </div>
               <h1 id="my-device-headline">My Device Library</h1>
               <p class="hero-desc">Play phone files locally with zero lag, or 1-tap share with every TV, laptop & phone connected to this Wi-Fi mesh.</p>
@@ -308,10 +321,16 @@
           <div class="view-header">
             <div>
               <h1>Music</h1>
-              <div class="scope-tabs" data-target="songs" style="margin-top: 6px;">
-                <button class="scope-tab active" data-scope="all">📚 All Network</button>
-                <button class="scope-tab" data-scope="mine">📱 My Uploads</button>
-                <button class="scope-tab" data-scope="shared">🌐 Host & Peers</button>
+              <div class="scope-bar" data-target="songs" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top: 6px;">
+                <div class="scope-tabs">
+                  <button class="scope-tab active" data-scope="all">🌐 All</button>
+                  <button class="scope-tab" data-scope="server">🖥️ Server</button>
+                  <button class="scope-tab" data-scope="mine">📱 My Uploads</button>
+                </div>
+                <select class="peer-scope-dropdown" data-target="songs" title="Filter by connected peers">
+                  <option value="">👥 Peers (Select Device)</option>
+                  <option value="peers">👥 All Connected Peers</option>
+                </select>
               </div>
             </div>
             <div class="view-controls">
@@ -346,10 +365,16 @@
           <div class="view-header">
             <div>
               <h1>Movies & Videos</h1>
-              <div class="scope-tabs" data-target="videos" style="margin-top: 6px;">
-                <button class="scope-tab active" data-scope="all">📚 All Network</button>
-                <button class="scope-tab" data-scope="mine">📱 My Uploads</button>
-                <button class="scope-tab" data-scope="shared">🌐 Host & Peers</button>
+              <div class="scope-bar" data-target="videos" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top: 6px;">
+                <div class="scope-tabs">
+                  <button class="scope-tab active" data-scope="all">🌐 All</button>
+                  <button class="scope-tab" data-scope="server">🖥️ Server</button>
+                  <button class="scope-tab" data-scope="mine">📱 My Uploads</button>
+                </div>
+                <select class="peer-scope-dropdown" data-target="videos" title="Filter by connected peers">
+                  <option value="">👥 Peers (Select Device)</option>
+                  <option value="peers">👥 All Connected Peers</option>
+                </select>
               </div>
               <span class="view-subtitle" id="videos-count-badge" style="display:block; margin-top:4px;">0 videos</span>
             </div>
@@ -365,6 +390,64 @@
             </div>
           </div>
           <div class="video-grid" id="video-grid"></div>
+        </div>
+
+        <!-- View: Photos & Gallery -->
+        <div id="view-photos" class="view">
+          <div class="view-header">
+            <div>
+              <h1>Photos & Gallery</h1>
+              <div class="scope-bar" data-target="photos" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top: 6px;">
+                <div class="scope-tabs">
+                  <button class="scope-tab active" data-scope="all">🌐 All</button>
+                  <button class="scope-tab" data-scope="server">🖥️ Server</button>
+                  <button class="scope-tab" data-scope="mine">📱 My Uploads</button>
+                </div>
+                <select class="peer-scope-dropdown" data-target="photos" title="Filter by connected peers">
+                  <option value="">👥 Peers (Select Device)</option>
+                  <option value="peers">👥 All Connected Peers</option>
+                </select>
+              </div>
+              <span class="view-subtitle" id="photos-count-badge" style="display:block; margin-top:4px;">0 photos</span>
+            </div>
+            <div class="view-controls">
+              <select id="photos-album-filter" class="dropdown" style="max-width: 180px;">
+                <option value="">All Albums</option>
+              </select>
+              <button id="post-status-btn" class="primary-btn status-btn" style="background: linear-gradient(135deg, #ec4899, #8b5cf6); border: none;" title="Post a 24-hour disappearing photo update / job-site check-in">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span>📸 Post 24h Status</span>
+              </button>
+              <button id="upload-photos-btn" class="primary-btn" title="Upload photos from camera roll or files">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <span>Upload Photos</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 24h Status / Stories Section -->
+          <div id="stories-section" class="stories-section">
+            <div class="stories-bar-header">
+              <div class="stories-bar-title">
+                <span class="stories-pulse-icon"></span>
+                <h4>24-Hour Field Status & Monitoring</h4>
+                <span id="active-status-badge" class="stories-count-pill">0 active</span>
+              </div>
+              <span class="stories-vanish-hint">⏳ Vanishes automatically after 24 hours</span>
+            </div>
+            <div class="stories-carousel" id="stories-carousel">
+              <!-- Populated dynamically via JS -->
+            </div>
+          </div>
+
+          <div id="photos-timeline-container" class="photos-container"></div>
         </div>
 
         <!-- View: Favorites -->
@@ -408,7 +491,7 @@
           
           <div class="downloader-card">
             <div class="input-group">
-              <input type="text" id="dl-url-input" placeholder="Paste YouTube link (e.g. https://www.youtube.com/watch?v=...)" autocomplete="off">
+              <input type="text" id="dl-url-input" placeholder="Paste YouTube, Spotify, or media link (or type song name to search)" autocomplete="off">
             </div>
 
             <div class="downloader-options">
@@ -429,6 +512,18 @@
                 <option value="720p">720p HD</option>
               </select>
 
+              <div class="destination-toggle">
+                <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">Save to:</span>
+                <label class="toggle-option" title="Saves directly to Server Media Folder (/DATA/Media/Movies or /DATA/Media/Music)">
+                  <input type="radio" name="dl-destination" value="server" checked>
+                  <span>📥 Server Media Folder</span>
+                </label>
+                <label class="toggle-option" title="Downloads directly to this phone/laptop's local Downloads folder">
+                  <input type="radio" name="dl-destination" value="client">
+                  <span>💾 My Device (Phone/PC)</span>
+                </label>
+              </div>
+
               <button id="start-download-btn" class="primary-btn">
                 <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -438,11 +533,17 @@
                 <span>Download</span>
               </button>
             </div>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 8px;">
+              💡 <strong>Server downloads</strong> automatically save to your shared Media folders (e.g. <code>/DATA/Media/Movies</code> for videos, <code>/DATA/Media/Music</code> for audio) and index instantly.
+            </p>
           </div>
 
           <!-- Active Downloads Queue -->
           <div class="downloads-section">
-            <h3>Active & Recent Downloads</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px;">
+              <h3 style="margin:0;">Active & Recent Downloads</h3>
+              <button id="clear-downloads-btn" class="secondary-btn" style="padding: 4px 10px; font-size: 0.75rem;">Clear Inactive</button>
+            </div>
             <div id="downloads-queue" class="downloads-list">
               <p class="placeholder-text">No active downloads.</p>
             </div>
@@ -489,6 +590,7 @@
             <h1>Privacy & Shared Folders</h1>
             <span class="view-subtitle">Control exactly what folders you share with others</span>
           </div>
+          <div id="admin-notice-banner" style="display:none; margin-bottom: 20px; padding: 14px 18px; border-radius: 10px; font-size: 0.9rem; line-height: 1.5;"></div>
 
           <div class="settings-card">
             <!-- Master Privacy Switch -->
@@ -513,6 +615,63 @@
                 <input type="text" id="device-name-input" placeholder="e.g. Sahaveer's Laptop">
                 <button id="save-device-name-btn" class="secondary-btn">Save</button>
               </div>
+            </div>
+
+            <!-- Worldwide Remote Access (Global Mode via Cloudflare Tunnel) -->
+            <div class="setting-row" style="border-top: 1px solid var(--border-subtle); padding-top: 16px; margin-top: 16px;">
+              <div class="setting-info">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <h3>Worldwide Remote Access (Global Mode)</h3>
+                  <span id="global-status-badge" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; background: rgba(148, 163, 184, 0.15); color: #94a3b8; font-weight: 500;">Inactive</span>
+                </div>
+                <p>Run simultaneously with local Wi-Fi mesh so you can stream your music and movies from mobile anywhere in the world on 4G/5G.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="global-access-toggle">
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <div id="global-access-details" style="display: none; background: rgba(0,0,0,0.2); border-radius: 10px; padding: 12px 16px; margin-top: 12px; border: 1px solid var(--border-subtle);">
+              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Active Worldwide HTTPS URL:</label>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span id="global-access-url-text" style="font-family: monospace; font-size: 0.85rem; color: #34d399; word-break: break-all;">-</span>
+                <button id="copy-global-settings-url-btn" class="secondary-btn" style="padding: 4px 10px; font-size: 0.78rem;">Copy</button>
+              </div>
+              <div style="margin-top: 10px; display: flex; gap: 8px;">
+                <button id="open-global-qr-settings-btn" class="secondary-btn" style="font-size: 0.78rem; padding: 6px 12px;">
+                  <span>Show Mobile QR Code</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Host Approval Queue Policy Switch -->
+            <div class="setting-row" style="border-top: 1px solid var(--border-subtle); padding-top: 16px; margin-top: 16px;">
+              <div class="setting-info">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <h3>Host Approval Queue</h3>
+                  <span id="approval-queue-status-badge" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; background: rgba(245, 158, 11, 0.15); color: #fbbf24; font-weight: 500;">Auto-Accept</span>
+                </div>
+                <p>When enabled, incoming media files and photos uploaded by peers must be reviewed and approved on this PC before entering the shared library.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="approval-queue-toggle">
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Pending Uploads Queue (Host Admin Only) -->
+          <div class="pending-uploads-card" id="pending-uploads-card" style="display: none; margin-bottom: 20px;">
+            <div class="pending-uploads-header">
+              <h3>
+                <span>⏳ Pending Peer Uploads</span>
+                <span id="pending-uploads-badge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; background: rgba(245, 158, 11, 0.2); color: #fbbf24;">0</span>
+              </h3>
+              <button id="refresh-pending-btn" class="secondary-btn" style="padding: 4px 10px; font-size: 0.75rem;">Refresh</button>
+            </div>
+            <div id="pending-uploads-list" class="pending-list">
+              <p class="placeholder-text" style="font-size: 0.85rem;">No pending uploads.</p>
             </div>
           </div>
 
@@ -615,6 +774,14 @@
           <line x1="17" y1="2" x2="17" y2="22"></line>
         </svg>
         <span>Videos</span>
+      </button>
+      <button class="bottom-nav-item" data-view="photos">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <span>Photos</span>
       </button>
       <button class="bottom-nav-item" data-view="favorites">
         <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none">
@@ -810,6 +977,67 @@
   <!-- Audio Element -->
   <audio id="audio-engine" preload="auto"></audio>
 
+  <!-- Add Shared Folder Modal -->
+  <div class="modal-overlay hidden" id="add-folder-modal">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <svg viewBox="0 0 24 24" width="22" height="22" stroke="var(--accent)" stroke-width="2" fill="none">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <h3>Add Shared Folder</h3>
+        </div>
+        <button id="add-folder-modal-close" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 0;">
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 14px;">
+          Enter or select a folder path on your server to index and stream across all connected devices.
+        </p>
+
+        <!-- Common Quick-Pick Suggestions -->
+        <div style="margin-bottom: 16px;">
+          <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Common Server Paths (Click to Auto-Fill):</label>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;" id="folder-preset-chips">
+            <button type="button" class="secondary-btn preset-chip" data-path="/DATA/Media" data-name="DATA Media" data-type="both" style="font-size: 0.75rem; padding: 4px 8px;">📁 /DATA/Media (All)</button>
+            <button type="button" class="secondary-btn preset-chip" data-path="/DATA/Media/Movies" data-name="Movies" data-type="video" style="font-size: 0.75rem; padding: 4px 8px;">🎬 /DATA/Media/Movies</button>
+            <button type="button" class="secondary-btn preset-chip" data-path="/DATA/Media/Music" data-name="Music" data-type="music" style="font-size: 0.75rem; padding: 4px 8px;">🎵 /DATA/Media/Music</button>
+            <button type="button" class="secondary-btn preset-chip" data-path="/DATA/Media/TV Shows" data-name="TV Shows" data-type="video" style="font-size: 0.75rem; padding: 4px 8px;">📺 /DATA/Media/TV Shows</button>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label style="font-size: 0.78rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Server Folder Path:</label>
+            <input type="text" id="new-folder-path-input" placeholder="/DATA/Media/Movies (Linux) or D:\Movies (Windows)" style="width: 100%; font-family: monospace; font-size: 0.88rem; padding: 10px 12px; border-radius: 8px; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary);">
+          </div>
+
+          <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+              <label style="font-size: 0.78rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Folder Label / Name:</label>
+              <input type="text" id="new-folder-name-input" placeholder="e.g. Server Movies" style="width: 100%; font-size: 0.88rem; padding: 10px 12px; border-radius: 8px; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary);">
+            </div>
+            <div style="flex: 1;">
+              <label style="font-size: 0.78rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Media Type:</label>
+              <select id="new-folder-type-select" class="dropdown" style="width: 100%; font-size: 0.88rem; padding: 10px 12px; border-radius: 8px;">
+                <option value="both">🌟 Both Music & Videos</option>
+                <option value="video">🎬 Videos / Movies Only</option>
+                <option value="music">🎵 Music / Audio Only</option>
+                <option value="photos">📸 Photos Only</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+            <button type="button" id="add-folder-cancel-btn" class="secondary-btn">Cancel</button>
+            <button type="button" id="add-folder-submit-btn" class="primary-btn">
+              <span>Add & Index Folder</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Add to Playlist Modal -->
   <div class="modal-overlay hidden" id="playlist-modal">
     <div class="modal-card">
@@ -821,26 +1049,41 @@
     </div>
   </div>
 
-  <!-- QR Code Connect Modal -->
+  <!-- QR Code Connect Modal (Dual-Mode: Local Mesh + Worldwide Global) -->
   <div class="modal-overlay hidden" id="qr-modal">
-    <div class="modal-card qr-card">
+    <div class="modal-card qr-card" style="max-width: 460px;">
       <div class="modal-header">
         <h3>Connect Phone / Device</h3>
         <button id="qr-modal-close" class="icon-btn">✕</button>
       </div>
-      <div class="modal-body qr-body" style="text-align: center; padding: 12px 0;">
+
+      <!-- Mode Selector Tabs -->
+      <div style="display: flex; gap: 8px; padding: 12px 16px 0; border-bottom: 1px solid var(--border-subtle);">
+        <button id="connect-tab-mesh" class="tab-btn active" style="flex: 1; padding: 8px 12px; font-size: 0.85rem; border: none; background: none; color: var(--text-primary); cursor: pointer; border-bottom: 2px solid var(--accent); font-weight: 600;">
+          🏠 Local Wi-Fi Mesh
+        </button>
+        <button id="connect-tab-tailscale" class="tab-btn" style="flex: 1; padding: 8px 12px; font-size: 0.85rem; border: none; background: none; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; display: none;">
+          🔒 Tailscale Mesh
+        </button>
+        <button id="connect-tab-global" class="tab-btn" style="flex: 1; padding: 8px 12px; font-size: 0.85rem; border: none; background: none; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500;">
+          🌍 Worldwide (4G/5G)
+        </button>
+      </div>
+
+      <!-- Tab Content: Local Mesh -->
+      <div id="mesh-connect-content" class="modal-body qr-body" style="text-align: center; padding: 16px 0;">
         <div style="background: #ffffff; padding: 14px; border-radius: 16px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
-          <img id="qr-code-img" src="/api/qr" alt="QR Code" style="width: 220px; height: 220px; display: block;">
+          <img id="qr-code-img" src="/api/qr" alt="QR Code" style="width: 200px; height: 200px; display: block;">
         </div>
-        <p style="font-size: 0.88rem; color: var(--text-secondary); margin: 16px 0 10px;">
-          Point your iPhone or Android camera at this QR code to stream over Wi-Fi with 0 MB internet!
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 12px 0 10px;">
+          Scan with iPhone or Android camera to stream over Wi-Fi with <strong>0 MB internet used</strong> at ultra-fast speeds!
         </p>
         <div id="qr-ip-selector-container" style="margin-bottom: 12px; text-align: left;">
           <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Network Address (Wi-Fi / Hotspot):</label>
           <select id="qr-ip-select" class="dropdown" style="width: 100%; font-size: 0.85rem; padding: 8px 12px;"></select>
         </div>
         <div style="background: var(--bg-surface); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-          <span id="qr-connect-url" style="font-family: monospace; font-size: 0.85rem; color: #a5b4fc; word-break: break-all;">http://192.168.1.6:8000</span>
+          <span id="qr-connect-url" style="font-family: monospace; font-size: 0.82rem; color: #a5b4fc; word-break: break-all;">http://192.168.1.6:8000</span>
           <button id="copy-qr-url-btn" class="secondary-btn" style="padding: 6px 12px; font-size: 0.78rem;">Copy</button>
         </div>
         <button id="share-link-btn" class="primary-btn" style="width: 100%; justify-content: center; margin-top: 14px;">
@@ -851,8 +1094,84 @@
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
             <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
           </svg>
-          <span>Share Link with Friends</span>
+          <span>Share Local Link</span>
         </button>
+      </div>
+
+      <!-- Tab Content: Tailscale Private Mesh -->
+      <div id="tailscale-connect-content" class="modal-body qr-body" style="display: none; text-align: center; padding: 16px 0;">
+        <div style="background: #ffffff; padding: 14px; border-radius: 16px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+          <img id="tailscale-qr-code-img" src="/icon.svg" alt="Tailscale QR Code" style="width: 200px; height: 200px; display: block;">
+        </div>
+        <div style="display: inline-flex; align-items: center; gap: 6px; margin: 12px auto 4px; padding: 3px 10px; border-radius: 12px; background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 0.78rem; font-weight: 500;">
+          <span>🔒 Tailscale WireGuard P2P Active</span>
+        </div>
+        <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 6px 0 12px;">
+          Stream anywhere in the world on 4G/5G over your private Tailscale network with unlimited speed and zero internet exposure!
+        </p>
+        <div style="background: var(--bg-surface); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <span id="tailscale-connect-url-display" style="font-family: monospace; font-size: 0.82rem; color: #818cf8; word-break: break-all;">-</span>
+          <button id="copy-tailscale-qr-url-btn" class="secondary-btn" style="padding: 6px 12px; font-size: 0.78rem;">Copy</button>
+        </div>
+        <button id="share-tailscale-link-btn" class="primary-btn" style="width: 100%; justify-content: center; margin-top: 14px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          <span>Share Tailscale Link</span>
+        </button>
+      </div>
+
+      <!-- Tab Content: Worldwide Global Access -->
+      <div id="global-connect-content" class="modal-body qr-body" style="display: none; text-align: center; padding: 16px 0;">
+        <!-- When Global is Active -->
+        <div id="global-active-panel" style="display: none;">
+          <div style="background: #ffffff; padding: 14px; border-radius: 16px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+            <img id="global-qr-code-img" src="/icon.svg" alt="Global QR Code" style="width: 200px; height: 200px; display: block;">
+          </div>
+          <div style="display: inline-flex; align-items: center; gap: 6px; margin: 12px auto 4px; padding: 3px 10px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.78rem; font-weight: 500;">
+            <span>🟢 Worldwide Tunnel Active (HTTPS)</span>
+          </div>
+          <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 6px 0 12px;">
+            Works anywhere in the world on mobile cellular data (4G/5G) or outside Wi-Fi! Tap <strong>"Add to Home Screen"</strong> on phone to install as PWA app.
+          </p>
+          <div style="background: var(--bg-surface); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <span id="global-connect-url-display" style="font-family: monospace; font-size: 0.82rem; color: #34d399; word-break: break-all;">-</span>
+            <button id="copy-global-qr-url-btn" class="secondary-btn" style="padding: 6px 12px; font-size: 0.78rem;">Copy</button>
+          </div>
+          <button id="share-global-link-btn" class="primary-btn" style="width: 100%; justify-content: center; margin-top: 14px;">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            <span>Share Worldwide Link</span>
+          </button>
+        </div>
+
+        <!-- When Global is Starting -->
+        <div id="global-starting-panel" style="display: none; padding: 24px 12px;">
+          <div style="font-size: 2rem; margin-bottom: 12px; animation: pulse 1.5s infinite;">⏳</div>
+          <h4 style="font-size: 1rem; margin-bottom: 6px;">Starting Worldwide Global Access...</h4>
+          <p style="font-size: 0.82rem; color: var(--text-secondary);">Connecting to Cloudflare edge network and generating secure HTTPS tunnel...</p>
+        </div>
+
+        <!-- When Global is Inactive -->
+        <div id="global-inactive-panel" style="padding: 20px 12px;">
+          <div style="font-size: 2.5rem; margin-bottom: 10px;">🌍</div>
+          <h4 style="font-size: 1.05rem; margin-bottom: 8px;">Worldwide Remote Access is Off</h4>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 18px;">
+            Want to listen to your music and watch movies when you move outside your home Wi-Fi? Start the Global Tunnel to access this hub from any phone anywhere in the world on 4G/5G.
+          </p>
+          <button id="start-global-now-btn" class="primary-btn" style="width: 100%; justify-content: center; padding: 12px;">
+            <span>🚀 Start Worldwide Access (Global Mode)</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -906,8 +1225,148 @@
               </div>
               <button class="secondary-btn copy-m3u-btn" data-target="tv-m3u-movies-url" style="padding: 6px 12px; font-size: 0.78rem;">Copy</button>
             </div>
+
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); padding: 12px 14px; border-radius: 10px; margin-top: 6px;">
+              <strong style="font-size: 0.82rem; color: #34d399; display: flex; align-items: center; gap: 6px;">
+                <span>✨ Zero-Config UPnP / DLNA Discovery</span>
+              </strong>
+              <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; line-height: 1.4;">
+                Open VLC on Android TV, PC or Apple TV ➔ Go to <strong>Local Network ➔ Universal Plug'n'Play (UPnP)</strong>. This Media Hub appears automatically with Music, Videos, and Photos!
+              </p>
+            </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Photo Lightbox Modal -->
+  <div class="photo-lightbox hidden" id="photo-lightbox-modal">
+    <div class="lightbox-topbar">
+      <div class="lightbox-title-info">
+        <h3 id="lightbox-title">Photo</h3>
+        <span class="lightbox-meta" id="lightbox-meta">-</span>
+      </div>
+      <div class="lightbox-actions">
+        <a id="lightbox-vlc-btn" href="#" class="vlc-play-btn" title="Open with VLC Media Player" target="_blank">
+          <span>📺 VLC</span>
+        </a>
+        <a id="lightbox-download-btn" href="#" download class="icon-btn" title="Download Photo to Device">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </a>
+        <button id="lightbox-delete-btn" class="icon-btn" title="Delete Photo">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+        <button id="lightbox-close-btn" class="icon-btn" title="Close Lightbox (Esc)">✕</button>
+      </div>
+    </div>
+    <div class="lightbox-main">
+      <button id="lightbox-prev-btn" class="lightbox-nav-btn lightbox-prev" title="Previous Photo (Left Arrow)">❮</button>
+      <img id="lightbox-img" class="lightbox-img" src="" alt="Photo Preview">
+      <button id="lightbox-next-btn" class="lightbox-nav-btn lightbox-next" title="Next Photo (Right Arrow)">❯</button>
+    </div>
+  </div>
+
+  <!-- Post 24h Status Modal -->
+  <div class="modal-overlay hidden" id="post-status-modal">
+    <div class="modal-card status-modal-card">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.3rem;">📸</span>
+          <h3 style="margin: 0; font-size: 1.1rem;">Post 24-Hour Status</h3>
+        </div>
+        <button class="icon-btn" id="close-post-status-modal-btn">✕</button>
+      </div>
+      <div class="status-modal-body">
+        <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
+          Share a photo update or job-site check-in. It will be visible to all peers and the server for <strong>24 hours</strong>, then disappears automatically unless saved.
+        </p>
+
+        <div class="status-upload-dropzone" id="status-upload-dropzone">
+          <img id="status-preview-img" class="status-preview-img hidden" alt="Status preview">
+          <div id="status-dropzone-placeholder" class="status-dropzone-placeholder">
+            <svg viewBox="0 0 24 24" width="36" height="36" stroke="currentColor" stroke-width="1.8" fill="none" style="color: #ec4899;">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <span style="font-size: 0.9rem; font-weight: 600; margin-top: 8px;">Take Photo or Choose File</span>
+            <span style="font-size: 0.78rem; color: var(--text-muted);">Camera snapshot, inspection photos, site reports</span>
+          </div>
+        </div>
+
+        <input type="file" id="status-file-input" accept="image/*" capture="environment" style="display: none;">
+
+        <div style="margin-top: 14px;">
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary);">Caption / Worker Note (Optional)</label>
+          <textarea id="status-caption-input" class="status-caption-textarea" rows="2" placeholder="e.g. Pump room pressure nominal, Site 4 floor plan check completed..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+        <button class="secondary-btn" id="cancel-post-status-btn">Cancel</button>
+        <button class="primary-btn" id="submit-post-status-btn" disabled style="background: linear-gradient(135deg, #ec4899, #8b5cf6); border: none;">
+          <span>🚀 Publish (24h)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen 24h Story / Status Viewer Modal -->
+  <div class="story-viewer-modal hidden" id="story-viewer-modal">
+    <div class="story-viewer-backdrop" id="story-viewer-backdrop"></div>
+    <div class="story-viewer-container">
+      <!-- Story Top Progress Bars -->
+      <div class="story-progress-container" id="story-progress-container"></div>
+
+      <!-- Story Top Bar -->
+      <div class="story-topbar">
+        <div class="story-user-info">
+          <div class="story-avatar-small" id="story-avatar-small">📱</div>
+          <div>
+            <div class="story-username" id="story-username">Worker Device</div>
+            <div class="story-meta" id="story-meta">Just now • ⏳ 24h left</div>
+          </div>
+        </div>
+        <div class="story-actions">
+          <button id="story-save-btn" class="story-action-btn highlight" title="Save permanently to Server Photos (will never vanish)">
+            <span>📥 Save to Server</span>
+          </button>
+          <a id="story-download-btn" href="#" download class="story-action-btn" title="Download raw image to device">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </a>
+          <button id="story-delete-btn" class="story-action-btn" title="Delete status">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+          <button id="story-close-btn" class="story-action-btn" title="Close (Esc)">✕</button>
+        </div>
+      </div>
+
+      <!-- Story Media Viewer -->
+      <div class="story-media-wrapper">
+        <button class="story-nav-btn story-nav-prev" id="story-prev-btn" title="Previous status">❮</button>
+        <img id="story-img" class="story-img" src="" alt="Status Update">
+        <button class="story-nav-btn story-nav-next" id="story-next-btn" title="Next status">❯</button>
+        <div class="story-touch-left" id="story-touch-left"></div>
+        <div class="story-touch-right" id="story-touch-right"></div>
+      </div>
+
+      <!-- Story Bottom Caption Overlay -->
+      <div class="story-caption-bar" id="story-caption-bar">
+        <p id="story-caption-text" class="story-caption-text"></p>
       </div>
     </div>
   </div>
@@ -915,7 +1374,8 @@
   <!-- Hidden File Input for Phone/Device Uploads & Instant Local Playback -->
   <input type="file" id="media-upload-input" multiple accept="audio/*,video/*,.mp3,.flac,.m4a,.wav,.mp4,.mkv,.webm,.mov" style="display: none;">
   <input type="file" id="local-playback-input" multiple accept="audio/*,video/*,.mp3,.flac,.m4a,.wav,.mp4,.mkv,.webm,.mov" style="display: none;">
+  <input type="file" id="photo-upload-input" multiple accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.gif,.bmp" style="display: none;">
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=2.2"></script>
 </body>
 </html>

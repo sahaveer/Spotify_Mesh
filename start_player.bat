@@ -1,12 +1,12 @@
 @echo off
-title Decentralized Media Hub - Local Wi-Fi Player
+title Decentralized Media Hub - Dual-Mode (Mesh + Global)
 setlocal enabledelayedexpansion
 
 :: Navigate to project directory
 cd /d "%~dp0"
 
 echo ============================================================
-echo           DECENTRALIZED OFFLINE MEDIA HUB
+echo   DECENTRALIZED MEDIA HUB (DUAL-MODE: MESH + GLOBAL)
 echo ============================================================
 echo.
 

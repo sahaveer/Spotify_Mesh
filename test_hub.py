@@ -31,7 +31,16 @@ def generate_dummy_video(file_path: pathlib.Path):
     with open(file_path, "wb") as f:
         f.write(data)
 
+def generate_sample_image(file_path: pathlib.Path, width: int = 600, height: int = 400):
+    from PIL import Image, ImageDraw
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new('RGB', (width, height), color=(73, 109, 137))
+    d = ImageDraw.Draw(img)
+    d.text((10, 10), "Test Photo", fill=(255, 255, 0))
+    img.save(file_path, "JPEG")
+
 def test_decentralized_hub():
+    original_settings = settings.load_settings()
     print("[1] Testing Privacy & Settings Management...")
     test_music_dir = config.BASE_DIR / "data" / "test_music"
     test_music_dir.mkdir(parents=True, exist_ok=True)
@@ -111,7 +120,15 @@ def test_decentralized_hub():
     assert "attachment" in res.headers.get("content-disposition", "")
     print("[PASS] /api/stream (Direct Wi-Fi Download attachment) passed")
 
-    # Downloader Task Creation
+    # Downloader Task Creation & Smart Resolution
+    resolved_query, hint_query = downloader._resolve_media_url("Viva La Vida")
+    assert resolved_query == "ytsearch1:Viva La Vida"
+    assert hint_query == "Viva La Vida"
+
+    resolved_spot, hint_spot = downloader._resolve_media_url("https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT")
+    assert resolved_spot.startswith("ytsearch1:")
+    assert hint_spot is not None
+
     res = client.post("/api/download", json={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "format": "audio"})
     assert res.status_code == 200
     task_id = res.json()["task_id"]
@@ -120,7 +137,10 @@ def test_decentralized_hub():
     res = client.get("/api/downloads/status")
     assert res.status_code == 200
     assert len(res.json()["tasks"]) > 0
-    print("[PASS] /api/download and /api/downloads/status passed")
+
+    clear_res = client.post("/api/downloads/clear")
+    assert clear_res.status_code == 200
+    print("[PASS] /api/download, smart Spotify/query resolver, and clear history passed")
 
     # QR Code Endpoint
     res = client.get("/api/qr")
@@ -243,7 +263,7 @@ def test_decentralized_hub():
     assert my_media_data["songs"][0]["id"] == uploaded_song_id
     print("[PASS] /api/my-media returned peer's own isolated library")
 
-    # Scope filtering: scope=mine vs scope=shared
+    # Scope filtering: scope=mine vs scope=shared vs scope=server vs scope=peers
     mine_res = client.get("/api/songs?scope=mine", headers={"X-Client-Id": peer_owner_id})
     assert mine_res.status_code == 200
     assert len(mine_res.json()["songs"]) == 1
@@ -253,15 +273,40 @@ def test_decentralized_hub():
     assert shared_res.status_code == 200
     # Shared files from others should NOT contain peer's own uploaded track
     assert all(s["id"] != uploaded_song_id for s in shared_res.json()["songs"])
-    print("[PASS] Media library scope filtering ('all', 'mine', 'shared') verified")
+
+    server_res = client.get("/api/songs?scope=server")
+    assert server_res.status_code == 200
+    assert all(s.get("owner_id") in ("host", None) for s in server_res.json()["songs"])
+
+    peers_res = client.get("/api/songs?scope=peers")
+    assert peers_res.status_code == 200
+    assert any(s["id"] == uploaded_song_id for s in peers_res.json()["songs"])
+
+    connected_peers_res = client.get("/api/peers/connected")
+    assert connected_peers_res.status_code == 200
+    assert any(p["id"] == peer_owner_id for p in connected_peers_res.json()["peers"])
+
+    print("[PASS] Media library scope filtering ('all', 'server', 'mine', 'peers') and connected peers verified")
 
     # Check from a viewing peer's perspective (non-owner)
     stranger_client_id = "stranger_device_999"
     stranger_view = client.get("/api/songs?query=peer_special_track", headers={"X-Client-Id": stranger_client_id})
     assert stranger_view.json()["songs"][0]["is_owner"] is False
 
-    # A non-owner remote client attempts to delete someone else's file -> MUST be HTTP 403 Forbidden!
+    # Non-owner remote client attempts to delete someone else's file -> MUST be HTTP 403 Forbidden!
     remote_client = TestClient(app, client=("192.168.1.88", 54321))
+
+    # [8] Testing Remote Peer Host Settings Protection (403 Forbidden for remote peers)
+    rem_settings = remote_client.post("/api/settings", json={"device_name": "Hijacked Hub"})
+    assert rem_settings.status_code == 403
+    rem_folder_add = remote_client.post("/api/settings/folders", json={"path": "/bad/path", "name": "Bad"})
+    assert rem_folder_add.status_code == 403
+    rem_folder_del = remote_client.delete("/api/settings/folders/some-id")
+    assert rem_folder_del.status_code == 403
+    rem_scan = remote_client.post("/api/scan")
+    assert rem_scan.status_code == 403
+    print("[PASS] Remote peer settings & folder protection (403 Forbidden) verified")
+
     del_forbidden = remote_client.delete(
         f"/api/media/{uploaded_song_id}",
         headers={"X-Client-Id": stranger_client_id}
@@ -288,7 +333,216 @@ def test_decentralized_hub():
     assert admin_del.status_code == 200
     print("[PASS] Localhost admin deletion verified")
 
-    print("\n[SUCCESS] ALL DECENTRALIZED HUB, FAVORITES & SECURITY TESTS PASSED SUCCESSFULLY!")
+    print("[7] Testing Dual-Mode (Mesh + Worldwide Global Access)...")
+    import tunnel
+    # Status endpoint includes global information
+    status_res = client.get("/api/status")
+    assert status_res.status_code == 200
+    data = status_res.json()
+    assert "global_enabled" in data
+    assert "global_status" in data
+    assert "global_url" in data
+    assert "local_ip" in data
+    assert "connect_url" in data
+    print("[PASS] /api/status dual-mode fields verified")
+
+    # Tunnel status endpoint
+    tun_status = client.get("/api/tunnel/status")
+    assert tun_status.status_code == 200
+    assert "status" in tun_status.json()
+    assert "is_active" in tun_status.json()
+    print("[PASS] /api/tunnel/status endpoint verified")
+
+    # Peer cannot start/stop tunnel (403 Forbidden)
+    tun_forbidden = remote_client.post("/api/tunnel/start")
+    assert tun_forbidden.status_code == 403
+    tun_stop_forbidden = remote_client.post("/api/tunnel/stop")
+    assert tun_stop_forbidden.status_code == 403
+    print("[PASS] Peer unauthorized tunnel control rejection (403 Forbidden) verified")
+
+    # Settings persistence
+    settings.set_global_access(False)
+    assert settings.is_global_access_enabled() is False
+    settings.set_global_access(True)
+    assert settings.is_global_access_enabled() is True
+    print("[PASS] Global access setting persistence verified (default: True)")
+
+    print("[8] Testing Tailscale WireGuard Mesh & Admin Trust...")
+    import run_server
+    assert run_server.is_tailscale_ip("100.85.20.10") is True
+    assert run_server.is_tailscale_ip("100.120.45.67") is True
+    assert run_server.is_tailscale_ip("192.168.1.50") is False
+    assert run_server.is_tailscale_ip("8.8.8.8") is False
+
+    # Tailscale client should be recognized as admin
+    tailscale_client = TestClient(app, client=("100.85.20.10", 45678))
+    ts_status = tailscale_client.get("/api/status")
+    assert ts_status.status_code == 200
+    assert ts_status.json()["is_admin"] is True
+    print("[PASS] Tailscale IP recognized and authorized as remote admin")
+
+    print("[9] Testing Photo Sharing, EXIF Extraction & Thumbnails...")
+    test_photo_dir = config.BASE_DIR / "data" / "test_photos"
+    test_photo_dir.mkdir(parents=True, exist_ok=True)
+    sample_photo = test_photo_dir / "Sunset_Beach_Vacation.jpg"
+    generate_sample_image(sample_photo, 800, 600)
+
+    settings.add_shared_folder(str(test_photo_dir), "Test Photos", "photos")
+    scanner.scan_library(full_rescan=True)
+
+    photos_res = client.get("/api/photos")
+    assert photos_res.status_code == 200
+    photos = photos_res.json()["photos"]
+    assert len(photos) > 0
+    test_photo = photos[0]
+    assert test_photo["width"] == 800
+    assert test_photo["height"] == 600
+    assert test_photo["thumb_hash"] is not None
+
+    # Test thumbnail endpoint
+    thumb_res = client.get(f"/api/photo/{test_photo['id']}/thumb")
+    assert thumb_res.status_code == 200
+    assert thumb_res.headers["content-type"] == "image/jpeg"
+
+    # Test raw photo endpoint
+    raw_res = client.get(f"/api/photo/{test_photo['id']}/raw")
+    assert raw_res.status_code == 200
+
+    # Test photo timeline
+    timeline_res = client.get("/api/photos/timeline")
+    assert timeline_res.status_code == 200
+    assert len(timeline_res.json()["timeline"]) > 0
+    print("[PASS] Photo indexing, thumbnail generation, timeline & API verified")
+
+    print("[10] Testing Host Approval Queue & Peer Upload Policy...")
+    # Enable approval queue
+    settings.set_upload_approval_required(True)
+    assert settings.is_upload_approval_required() is True
+
+    # Peer uploads a file -> should be queued as pending
+    dummy_audio_bytes = b"RIFF....WAVEfmt ...." + b"\x00" * 2000
+    upload_resp = remote_client.post(
+        "/api/upload",
+        files={"file": ("remote_peer_song.mp3", dummy_audio_bytes, "audio/mpeg")},
+        data={"client_id": "peer_client_999", "device_name": "Friend Phone"}
+    )
+    assert upload_resp.status_code == 200
+    upload_data = upload_resp.json()
+    assert upload_data["status"] == "pending"
+    pending_id = upload_data["upload_id"]
+
+    # Host admin views pending uploads
+    pending_list_res = client.get("/api/admin/pending-uploads")
+    assert pending_list_res.status_code == 200
+    pending_items = pending_list_res.json()["pending"]
+    assert any(p["id"] == pending_id for p in pending_items)
+
+    # Remote peer cannot view pending uploads (403 Forbidden)
+    assert remote_client.get("/api/admin/pending-uploads").status_code == 403
+
+    # Host approves upload
+    approve_res = client.post(f"/api/admin/pending-uploads/{pending_id}/approve")
+    assert approve_res.status_code == 200
+    assert approve_res.json()["status"] == "approved"
+    print("[PASS] Upload approval queue, peer isolation & admin review verified")
+
+    # Reset approval queue to False
+    settings.set_upload_approval_required(False)
+
+    print("[11] Testing Downloader Dual-Mode Destination...")
+    # Test client destination download initialization
+    dl_task_id = downloader.start_download(
+        url="https://example.com/mock_media.mp4",
+        media_format="video",
+        destination="client",
+        owner_id="test_client",
+        owner_name="Test Peer"
+    )
+    status = downloader.get_download_status(dl_task_id)
+    assert status is not None
+    assert status["destination"] == "client"
+    print("[PASS] Downloader client destination parameter verified")
+
+    print("[12] Testing UPnP / DLNA Discovery & XML Endpoints...")
+    dlna_desc = client.get("/dlna/desc.xml")
+    assert dlna_desc.status_code == 200
+    assert "urn:schemas-upnp-org:device:MediaServer:1" in dlna_desc.text
+    assert "ContentDirectory" in dlna_desc.text
+
+    dlna_cd = client.get("/dlna/content_directory.xml")
+    assert dlna_cd.status_code == 200
+    assert "GetSystemUpdateID" in dlna_cd.text
+    assert "Browse" in dlna_cd.text
+
+    # Test DLNA SOAP Browse request
+    soap_browse = """<?xml version="1.0"?>
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+      <s:Body>
+        <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+          <ObjectID>0</ObjectID>
+          <BrowseFlag>BrowseDirectChildren</BrowseFlag>
+        </u:Browse>
+      </s:Body>
+    </s:Envelope>"""
+    soap_res = client.post("/dlna/control", content=soap_browse, headers={"Content-Type": "text/xml"})
+    assert soap_res.status_code == 200
+    assert "BrowseResponse" in soap_res.text
+    assert "music_root" in soap_res.text
+    print("[PASS] UPnP/DLNA description, SCPD & SOAP Browse action verified")
+
+    print("[13] Testing Live Peer Sharing (Ephemeral P2P Broadcast & Zero Server Clutter)...")
+    from main import _live_peer_shares, cleanup_expired_live_shares, _connected_clients
+    import io, time
+    fake_video = io.BytesIO(b"fake video binary stream data for peer sharing")
+    fake_video.name = "test_live_video.mp4"
+    phone_headers = {"X-Client-Id": "peer-phone-99", "X-Forwarded-For": "192.168.1.155"}
+    res = client.post(
+        "/api/peers/share",
+        data={"client_id": "peer-phone-99", "device_name": "Sahaveer iPhone"},
+        files={"file": ("test_live_video.mp4", fake_video, "video/mp4")},
+        headers=phone_headers
+    )
+    assert res.status_code == 200
+    share_id = res.json()["share"]["id"]
+
+    # Remote peer sees share with is_owner = False
+    laptop_headers = {"X-Client-Id": "laptop-44", "X-Forwarded-For": "192.168.1.180"}
+    res = client.get("/api/peers/shares?media_type=video", headers=laptop_headers)
+    assert res.status_code == 200
+    shares = res.json()["shares"]
+    target = next(s for s in shares if s["id"] == share_id)
+    assert target["is_owner"] is False
+
+    # Stream & Download
+    res = client.get(f"/api/peers/shares/{share_id}/stream", headers={"Range": "bytes=0-5"})
+    assert res.status_code in (200, 206)
+    res = client.get(f"/api/peers/shares/{share_id}/download")
+    assert res.status_code == 200 and "attachment" in res.headers.get("content-disposition", "")
+
+    # 1-Click Copy to Server (CasaOS Storage)
+    res = client.post(f"/api/peers/shares/{share_id}/copy-to-server", headers=phone_headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["copied_to_server"] is True
+    assert os.path.exists(body["target_path"])
+    try:
+        os.remove(body["target_path"])
+    except Exception:
+        pass
+
+    # Ephemeral Departure Cleanup
+    _connected_clients["peer-phone-99"]["last_seen"] = time.time() - 300
+    _live_peer_shares[share_id]["last_seen"] = time.time() - 300
+    _live_peer_shares[share_id]["created_at"] = time.time() - 300
+    _live_peer_shares[share_id]["copied_to_server"] = False
+    cleanup_expired_live_shares(max_idle_seconds=60)
+    assert share_id not in _live_peer_shares
+    print("[PASS] Live peer ephemeral sharing, Range streaming, 1-click download, CasaOS copy & auto-cleanup verified")
+
+    print("\n[SUCCESS] ALL DECENTRALIZED HUB, PHOTOS, DOWNLOADER, APPROVAL QUEUE, DLNA & LIVE PEER SHARING TESTS PASSED SUCCESSFULLY!")
+    # Restore user production settings so test folders do not pollute media library
+    settings.save_settings(original_settings)
+    scanner.scan_library()
 
 if __name__ == "__main__":
     test_decentralized_hub()
