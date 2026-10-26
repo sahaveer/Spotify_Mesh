@@ -394,6 +394,47 @@ def stop_tunnel_endpoint(request: Request):
     return status
 
 
+@app.get("/api/settings/browse")
+def browse_server_folders(request: Request, path: Optional[str] = None):
+    if not is_host_admin(request):
+        raise HTTPException(status_code=403, detail="Only the server administrator can browse media folders.")
+    candidates = [pathlib.Path(f["path"]) for f in settings.load_settings().get("shared_folders", [])]
+    candidates += [pathlib.Path("/DATA/Media"), config.DEFAULT_MUSIC_DIR, config.DEFAULT_VIDEO_DIR]
+    roots = []
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+            if resolved != pathlib.Path(resolved.anchor) and resolved.is_dir() and resolved not in roots:
+                roots.append(resolved)
+        except OSError:
+            continue
+    if path is None:
+        return {"path": None, "parent": None, "folders": [{"name": p.name, "path": str(p)} for p in roots]}
+    try:
+        folder = pathlib.Path(path)
+        if not folder.is_absolute():
+            raise HTTPException(status_code=400, detail="Choose an absolute media folder path.")
+        folder = folder.resolve()
+        if not any(folder.is_relative_to(root) for root in roots):
+            raise HTTPException(status_code=403, detail="Browse within the listed media locations. To use another location, add its server path manually.")
+        if not folder.is_dir():
+            raise HTTPException(status_code=404, detail="Folder not found on this server. Check that the drive is mounted.")
+        children = []
+        for child in folder.iterdir():
+            try:
+                if child.is_dir() and any(child.resolve().is_relative_to(root) for root in roots):
+                    children.append({"name": child.name, "path": str(child)})
+            except OSError:
+                continue
+        children.sort(key=lambda item: item["name"].casefold())
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="The media server does not have permission to read this folder.")
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail="Cannot read this media folder. Check that the drive is mounted.")
+    parent = folder.parent
+    return {"path": str(folder), "parent": str(parent) if parent != folder and any(parent.is_relative_to(root) for root in roots) else None, "folders": children}
+
+
 @app.post("/api/settings/folders")
 def add_folder_to_shared(body: AddFolderRequest, request: Request):
     if not is_host_admin(request):
@@ -908,15 +949,14 @@ def enqueue_download(body: DownloadMediaRequest, request: Request):
         raise HTTPException(status_code=400, detail="URL cannot be empty")
     cid = get_request_client_id(request, body.client_id)
     dname = body.device_name or ("Host" if cid == "host" else f"Peer ({cid[:6]})")
-    task_id = downloader.start_download(
-        url=body.url.strip(),
-        media_format=body.format,
-        quality=body.quality,
-        destination=body.destination or "server",
-        custom_folder=body.custom_folder,
-        owner_id=cid,
-        owner_name=dname
-    )
+    try:
+        task_id = downloader.start_download(
+            url=body.url.strip(), media_format=body.format, quality=body.quality,
+            destination=body.destination or "server", custom_folder=body.custom_folder,
+            owner_id=cid, owner_name=dname
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     return {"task_id": task_id, "destination": body.destination or "server", "message": "Download started in background"}
 
 @app.get("/api/downloads/status")
@@ -937,7 +977,6 @@ def get_downloaded_file(task_id: str):
         str(file_path),
         filename=file_path.name,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{file_path.name}"'}
     )
 
 # --- Photos Endpoints ---
@@ -1418,17 +1457,35 @@ def list_albums(artist: Optional[str] = None):
     return {"albums": albums, "count": len(albums)}
 
 @app.get("/api/stream/{song_id}")
-def stream_media(song_id: str, request: Request, download: bool = False):
+def stream_media(song_id: str, request: Request, download: bool = False, compatible: bool = False):
     song = database.get_song(song_id)
     if not song:
         raise HTTPException(status_code=404, detail="Media not found")
     
     file_path = song["path"]
     filename = os.path.basename(file_path)
-    mime_type = song.get("mime_type", "video/mp4" if song.get("media_type") == "video" else "audio/mpeg")
+    mime_type = song.get("mime_type") or ("video/mp4" if song.get("media_type") == "video" else "audio/mpeg")
     download_filename = filename if download else None
 
+    if compatible and not download:
+        return streamer.compatible_media(file_path, song.get("media_type") == "video")
     return streamer.stream_audio(file_path, request, mime_type, download_filename)
+
+
+@app.post("/api/playback/{song_id}/compatible")
+def prepare_compatible_playback(song_id: str):
+    song = database.get_song(song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="Media not found")
+    return streamer.compatibility_job(song["path"], song.get("media_type") == "video", start=True)
+
+
+@app.get("/api/playback/{song_id}/compatible")
+def compatible_playback_status(song_id: str):
+    song = database.get_song(song_id)
+    if not song:
+        raise HTTPException(status_code=404, detail="Media not found")
+    return streamer.compatibility_job(song["path"], song.get("media_type") == "video")
 
 @app.get("/api/cover/{song_id}")
 def get_cover_art(song_id: str):

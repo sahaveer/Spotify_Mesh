@@ -137,6 +137,32 @@ sudo systemctl enable --now mediaplayer
 ---
 
 ## 🧪 Running Tests
+
+### YouTube downloader setup on the server
+
+In the same Python environment that runs MediaPlayer, install or update the
+YouTube support dependencies:
+
+```bash
+python -m pip install -U -r requirements.txt
+```
+
+Install Node.js 22+ or Deno 2.3+ on the server and ensure it is available to the
+MediaPlayer service. Restart MediaPlayer after updating dependencies or PATH.
+FFmpeg is also needed to extract MP3 audio and merge high-quality video; the app
+uses system FFmpeg or the bundled imageio-ffmpeg binary.
+
+Share or paste a link, choose Audio or Video, choose Server Media Folder or
+My Device, then press Download. Server downloads are indexed in the library.
+My Device prepares the file on the server and offers Save File for the browser;
+it does not put the file in the shared library. Phones may require tapping Save
+File rather than allowing an automatic download.
+
+Metadata extraction times out after two minutes; a whole task has a 30-minute
+limit. YouTube sign-in, regional restrictions, and IP blocks are reported as
+errors rather than bypassed. Temporary files for device downloads remain in
+`data/staging/client_<task-id>` until removed by the server administrator.
+
 ```bash
 python test_hub.py
 ```

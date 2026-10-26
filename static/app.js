@@ -1304,7 +1304,111 @@ function renderFavorites(items) {
   }
 }
 
+let playbackNoticeVersion = 0;
+function clearPlaybackNotice() {
+  playbackNoticeVersion++;
+  document.getElementById('playback-notice')?.remove();
+}
+
+async function showPlaybackError(engine) {
+  if (!engine.error || engine.error.code === 1 || !engine.getAttribute('src')) return;
+  const source = engine.src;
+  clearPlaybackNotice();
+  const version = playbackNoticeVersion;
+  const panel = document.createElement('div');
+  panel.id = 'playback-notice';
+  panel.setAttribute('role', 'alert');
+  panel.style.cssText = 'position:fixed;bottom:100px;left:5%;width:90%;max-width:620px;z-index:10000;background:var(--bg-surface,#161925);border:1px solid #f59e0b;border-radius:12px;padding:16px;box-shadow:0 8px 30px #0008;';
+  const message = document.createElement('p');
+  message.textContent = 'Playback failed. Checking whether the server can read this file…';
+  panel.appendChild(message);
+  const close = document.createElement('button');
+  close.className = 'secondary-btn';
+  close.textContent = 'Dismiss';
+  close.onclick = clearPlaybackNotice;
+  panel.appendChild(close);
+  document.body.appendChild(panel);
+  const url = new URL(source, window.location.href);
+  const serverMedia = url.origin === window.location.origin && /^\/api\/stream\/[^/]+$/.test(url.pathname);
+  if (!serverMedia) {
+    message.textContent = 'This file could not play. Its format may be unsupported, or the device sharing it may be offline. Try VLC or download the file.';
+    return;
+  }
+  try {
+    const response = await apiFetch(url.href, { headers: { Range: 'bytes=0-0' }, signal: AbortSignal.timeout(15000) });
+    if (version !== playbackNoticeVersion || engine.src !== source) { await response.body?.cancel(); return; }
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.json()).detail || ''; } catch (_) {}
+      message.textContent = detail || `The server could not stream this file (HTTP ${response.status}). Check its drive and folder permissions, then rescan.`;
+      return;
+    }
+    await response.body?.cancel();
+    if (url.searchParams.has('compatible')) {
+      message.textContent = 'The compatible copy could not play. Try VLC; this file may be damaged or unsupported on this device.';
+      return;
+    }
+    message.textContent = 'The file is reachable, but playback failed. Try a browser-compatible copy. Preparing it can take a few minutes and uses server storage.';
+    const compatible = document.createElement('button');
+    compatible.className = 'primary-btn';
+    compatible.textContent = 'Play compatible version';
+    compatible.style.margin = '8px';
+    compatible.onclick = async () => {
+      compatible.disabled = true;
+      message.textContent = 'Preparing a compatible copy on the server…';
+      url.searchParams.set('compatible', 'true');
+      try {
+        const jobUrl = `/api/playback/${encodeURIComponent(url.pathname.split('/').pop())}/compatible`;
+        let jobResponse = await apiFetch(jobUrl, { method: 'POST', signal: AbortSignal.timeout(15000) });
+        let job = await jobResponse.json();
+        if (!jobResponse.ok) throw new Error(job.detail || 'Could not prepare compatible playback.');
+        const deadline = Date.now() + 330000;
+        while (job.status === 'preparing' && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          if (version !== playbackNoticeVersion || engine.src !== source) return;
+          jobResponse = await apiFetch(jobUrl, { signal: AbortSignal.timeout(15000) });
+          job = await jobResponse.json();
+          if (!jobResponse.ok) throw new Error(job.detail || 'Could not check preparation.');
+        }
+        if (job.status !== 'ready') throw new Error(job.detail || 'Preparing this file took too long. Try VLC.');
+        const response = await apiFetch(url.href, { headers: { Range: 'bytes=0-0' }, signal: AbortSignal.timeout(15000) });
+        if (version !== playbackNoticeVersion || engine.src !== source) { await response.body?.cancel(); return; }
+        if (!response.ok) {
+          let detail = '';
+          try { detail = (await response.json()).detail || ''; } catch (_) {}
+          throw new Error(detail || `Compatible playback failed (HTTP ${response.status}). Try VLC.`);
+        }
+        await response.body?.cancel();
+        engine.src = url.href;
+        clearPlaybackNotice();
+        engine.play().catch(error => { if (error.name === 'NotAllowedError') alert('The compatible version is ready. Press Play to start.'); });
+      } catch (error) {
+        if (version !== playbackNoticeVersion) return;
+        message.textContent = error.message;
+        compatible.disabled = false;
+      }
+    };
+    panel.appendChild(compatible);
+    const vlc = document.createElement('a');
+    vlc.className = 'secondary-btn';
+    vlc.textContent = 'Open original in VLC';
+    vlc.href = `vlc://${source}`;
+    panel.appendChild(vlc);
+  } catch (_) {
+    if (version === playbackNoticeVersion) message.textContent = 'The media server could not be reached. Check the connection and try again.';
+  }
+}
+audio.addEventListener('error', () => {
+  state.isPlaying = false;
+  updatePlayIcons(false);
+  showPlaybackError(audio);
+});
+videoEngine.addEventListener('error', () => showPlaybackError(videoEngine));
+audio.addEventListener('playing', () => { state.isPlaying = true; updatePlayIcons(true); clearPlaybackNotice(); });
+videoEngine.addEventListener('playing', clearPlaybackNotice);
+
 function openVideoPlayer(video) {
+  clearPlaybackNotice();
   pauseAudio();
   videoModalTitle.textContent = video.title || 'Playing Video';
   videoEngine.src = video.isLocal ? video.url : (video.stream_url || `/api/stream/${video.id}`);
@@ -1313,6 +1417,7 @@ function openVideoPlayer(video) {
 }
 
 videoModalClose.addEventListener('click', () => {
+  clearPlaybackNotice();
   videoEngine.pause();
   videoEngine.src = '';
   videoModal.classList.add('hidden');
@@ -1480,6 +1585,7 @@ startDownloadBtn.addEventListener('click', async () => {
 
     const res = await apiFetch('/api/download', {
       method: 'POST',
+      signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url,
@@ -1492,6 +1598,7 @@ startDownloadBtn.addEventListener('click', async () => {
     });
 
     const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'The server could not start this download.');
     dlUrlInput.value = '';
     pollDownloads();
   } catch (err) {
@@ -1525,7 +1632,8 @@ let lastKnownCompleted = new Set();
 
 async function pollDownloads() {
   try {
-    const res = await apiFetch('/api/downloads/status');
+    const res = await apiFetch('/api/downloads/status', { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('Could not read download status.');
     const data = await res.json();
     state.downloads = data.tasks;
     renderDownloads(data.tasks);
@@ -1536,10 +1644,10 @@ async function pollDownloads() {
         lastKnownCompleted.add(t.id);
         hasNewCompletion = true;
         // Auto-download to client device if destination was client
-        if (t.destination === 'client' && t.download_url) {
+        if (t.destination === 'client' && t.owner_id === clientId && t.download_url) {
           const dlA = document.createElement('a');
           dlA.href = t.download_url;
-          dlA.download = `${t.title || 'download'}.${t.format === 'audio' ? 'mp3' : 'mp4'}`;
+          dlA.download = '';
           document.body.appendChild(dlA);
           dlA.click();
           document.body.removeChild(dlA);
@@ -1575,6 +1683,10 @@ async function playSongById(songId) {
     const res = await apiFetch(`/api/song/${songId}`);
     if (res.ok) {
       const song = await res.json();
+      if (song.media_type === 'video') {
+        openVideoPlayer(song);
+        return;
+      }
       const existingIdx = state.allSongs.findIndex(s => s.id === song.id);
       if (existingIdx !== -1) {
         playFromList(state.allSongs, existingIdx);
@@ -1620,7 +1732,7 @@ function renderDownloads(tasks) {
             </span>
           ` : `
             <span style="font-size:0.75rem; color:var(--text-muted);">
-              ${task.format === 'audio' ? '🎵 MP3 Audio' : '🎬 Video'} • ${task.destination === 'client' ? 'Direct to Phone' : 'Saved to Server'}${speedText}
+              ${task.format === 'audio' ? '🎵 Audio' : '🎬 Video'} • ${task.destination === 'client' ? (isDone ? 'Ready to save to your device' : 'Preparing for your device') : (isDone ? 'Saved to Server' : 'Saving to Server')}${speedText}
             </span>
           `}
         </div>
@@ -1668,7 +1780,7 @@ function renderDownloads(tasks) {
           retryBtn.disabled = true;
           retryBtn.textContent = 'Retrying...';
           try {
-            await apiFetch('/api/download', {
+            const retryResponse = await apiFetch('/api/download', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1680,6 +1792,10 @@ function renderDownloads(tasks) {
                 device_name: getDeviceType()
               })
             });
+            if (!retryResponse.ok) {
+              const error = await retryResponse.json();
+              throw new Error(error.detail || 'Could not restart download.');
+            }
             pollDownloads();
           } catch (err) {
             alert(`Retry failed: ${err}`);
@@ -1746,6 +1862,70 @@ const addFolderSubmitBtn = document.getElementById('add-folder-submit-btn');
 const newFolderPathInput = document.getElementById('new-folder-path-input');
 const newFolderNameInput = document.getElementById('new-folder-name-input');
 const newFolderTypeSelect = document.getElementById('new-folder-type-select');
+const serverFolderBrowser = document.getElementById('server-folder-browser');
+const serverFolderEntries = document.getElementById('server-folder-entries');
+const serverFolderFilter = document.getElementById('server-folder-filter');
+const serverFolderLocation = document.getElementById('server-folder-location');
+const serverFolderUp = document.getElementById('server-folder-up');
+const serverFolderUse = document.getElementById('server-folder-use');
+let serverFolderData = null;
+let serverFolderRequest = 0;
+
+function renderServerFolderEntries() {
+  serverFolderEntries.replaceChildren();
+  const query = serverFolderFilter.value.toLowerCase();
+  const folders = (serverFolderData?.folders || []).filter(folder => folder.name.toLowerCase().includes(query));
+  folders.forEach(folder => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'secondary-btn';
+    button.style.textAlign = 'left';
+    button.textContent = `📁 ${folder.name}`;
+    button.title = folder.path;
+    button.onclick = () => browseServerFolders(folder.path);
+    serverFolderEntries.appendChild(button);
+  });
+  if (!folders.length) serverFolderEntries.textContent = query ? 'No matching folders.' : 'No subfolders. You can use the current folder.';
+}
+
+async function browseServerFolders(path = null) {
+  const requestId = ++serverFolderRequest;
+  serverFolderBrowser.hidden = false;
+  serverFolderData = null;
+  serverFolderEntries.textContent = '';
+  serverFolderLocation.textContent = 'Loading server folders…';
+  serverFolderUse.disabled = true;
+  serverFolderUp.disabled = true;
+  try {
+    const response = await apiFetch('/api/settings/browse' + (path ? `?path=${encodeURIComponent(path)}` : ''));
+    const data = await response.json();
+    if (requestId !== serverFolderRequest) return;
+    if (!response.ok) throw new Error(data.detail || 'Could not browse server folders.');
+    serverFolderData = data;
+    serverFolderLocation.textContent = data.path || 'Available media locations on this server';
+    serverFolderUse.disabled = !data.path;
+    serverFolderUp.disabled = !data.parent;
+    serverFolderFilter.value = '';
+    renderServerFolderEntries();
+    if (!data.path && !data.folders.length) serverFolderEntries.textContent = 'No media locations found. Enter a mounted server folder path below.';
+  } catch (error) {
+    if (requestId === serverFolderRequest) serverFolderLocation.textContent = error.message;
+  }
+}
+
+document.getElementById('browse-server-folders')?.addEventListener('click', () => browseServerFolders());
+document.getElementById('server-folder-roots')?.addEventListener('click', () => browseServerFolders());
+serverFolderUp?.addEventListener('click', () => { if (serverFolderData?.parent) browseServerFolders(serverFolderData.parent); });
+serverFolderFilter?.addEventListener('input', renderServerFolderEntries);
+serverFolderUse?.addEventListener('click', () => {
+  if (!serverFolderData?.path) return;
+  newFolderPathInput.value = serverFolderData.path;
+  const name = serverFolderData.path.split(/[\\/]/).filter(Boolean).pop();
+  newFolderNameInput.value = name || 'Media';
+  newFolderTypeSelect.value = /^(music|audio|songs)$/i.test(name) ? 'music' : /^(videos?|movies|tv shows)$/i.test(name) ? 'video' : 'both';
+  serverFolderBrowser.hidden = true;
+  newFolderTypeSelect.focus();
+});
 
 if (addFolderBtn) {
   addFolderBtn.addEventListener('click', () => {
@@ -1753,6 +1933,7 @@ if (addFolderBtn) {
     if (newFolderNameInput) newFolderNameInput.value = '';
     if (newFolderTypeSelect) newFolderTypeSelect.value = 'both';
     if (addFolderModal) addFolderModal.classList.remove('hidden');
+    if (serverFolderBrowser) browseServerFolders();
   });
 }
 
@@ -1959,6 +2140,7 @@ function playFromList(list, index) {
 
 function loadTrack(index, autoPlay = true) {
   if (index < 0 || index >= state.queue.length) return;
+  clearPlaybackNotice();
   state.currentIndex = index;
   const song = state.queue[index];
   state.currentTrack = song;
@@ -3061,10 +3243,8 @@ function checkIncomingShares() {
     window.history.replaceState({}, document.title, '/');
     switchView('downloader');
     dlUrlInput.value = sharedUrl;
-    // 1-Click Auto Trigger Download
-    setTimeout(() => {
-      startDownloadBtn.click();
-    }, 400);
+    // Leave format and destination selection to the person sharing the link.
+    dlUrlInput.focus();
   } else if (sharedFiles) {
     window.history.replaceState({}, document.title, '/');
     alert(`Successfully shared ${sharedFiles} file(s) with everyone on Wi-Fi!`);

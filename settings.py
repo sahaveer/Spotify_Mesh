@@ -149,12 +149,12 @@ def get_target_upload_folder(media_type: str = "audio") -> pathlib.Path:
     if selected_folder:
         # Check for matching subfolders (e.g. D:\MEDIA PLAYER\VIDEOS or D:\MEDIA PLAYER\MUSIC)
         if media_type == "video":
-            for sub in ["VIDEOS", "videos", "Movies", "movies", "Video", "video"]:
+            for sub in ["Videos", "VIDEOS", "videos", "Movies", "movies", "Video", "video"]:
                 candidate = selected_folder / sub
                 if candidate.exists() and candidate.is_dir():
                     return candidate
         elif media_type == "audio":
-            for sub in ["MUSIC", "music", "Audio", "audio", "Songs", "songs"]:
+            for sub in ["Music", "MUSIC", "music", "Audio", "audio", "Songs", "songs"]:
                 candidate = selected_folder / sub
                 if candidate.exists() and candidate.is_dir():
                     return candidate

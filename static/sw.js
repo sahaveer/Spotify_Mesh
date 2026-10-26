@@ -1,4 +1,4 @@
-const CACHE_NAME = 'media-player-shell-v3';
+const CACHE_NAME = 'media-player-shell-v6';
 const SHELL_ASSETS = [
   '/',
   '/index.html',

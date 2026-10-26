@@ -9,6 +9,10 @@ import pathlib
 import json
 import urllib.request
 import urllib.parse
+import sys
+import subprocess
+import signal
+import importlib.util
 from typing import Dict, Any, Optional, Tuple
 import yt_dlp
 
@@ -46,6 +50,22 @@ logger = logging.getLogger("downloader")
 
 _download_tasks: Dict[str, Dict[str, Any]] = {}
 _lock = threading.Lock()
+
+
+def _youtube_runtime():
+    if importlib.util.find_spec("yt_dlp_ejs") is None:
+        raise RuntimeError('YouTube support is incomplete. On the server, run: python -m pip install -U "yt-dlp[default]"')
+    for name, executable, minimum in (("deno", shutil.which("deno"), (2, 3)), ("node", NODE_PATH, (22, 0))):
+        if not executable:
+            continue
+        try:
+            result = subprocess.run([executable, "--version"], capture_output=True, text=True, timeout=5)
+            match = re.search(r"(\d+)\.(\d+)", result.stdout)
+            if result.returncode == 0 and match and tuple(map(int, match.groups())) >= minimum:
+                return {name: {"path": executable}}
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+    raise RuntimeError("YouTube needs a supported JavaScript runtime on the server. Install Node.js 22+ or Deno 2.3+ and restart MediaPlayer.")
 
 def _resolve_media_url(raw_input: str) -> Tuple[str, Optional[str]]:
     """
@@ -143,19 +163,13 @@ def get_download_file(task_id: str) -> Optional[pathlib.Path]:
         task = _download_tasks.get(task_id)
         if not task:
             return None
+        if task.get("status") != "completed":
+            return None
         fpath = task.get("file_path")
         if fpath:
             p = pathlib.Path(fpath)
             if p.exists():
                 return p
-        # Check target_dir if file_path wasn't stored
-        tdir = task.get("target_dir")
-        if tdir:
-            p_tdir = pathlib.Path(tdir)
-            if p_tdir.exists():
-                for f in p_tdir.glob("*.*"):
-                    if f.is_file() and f.suffix.lower() in config.SUPPORTED_EXTENSIONS:
-                        return f
     return None
 
 def _progress_hook(d: Dict[str, Any], task_id: str):
@@ -163,6 +177,9 @@ def _progress_hook(d: Dict[str, Any], task_id: str):
         if task_id not in _download_tasks:
             return
         task = _download_tasks[task_id]
+        info = d.get('info_dict') or {}
+        if info.get('title'):
+            task['title'] = info['title']
 
         if d.get("status") == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
@@ -178,7 +195,7 @@ def _progress_hook(d: Dict[str, Any], task_id: str):
             task["status"] = "processing"
             task["progress"] = 100
 
-def _run_download(
+def _perform_download(
     task_id: str,
     raw_url: str,
     media_format: str,
@@ -190,10 +207,13 @@ def _run_download(
 ):
     task = _download_tasks[task_id]
     target_dir.mkdir(parents=True, exist_ok=True)
-    out_template = str(target_dir / "%(title)s.%(ext)s")
+    out_template = str(target_dir / "%(title)s [%(id)s].%(ext)s")
 
     # Resolve URL (e.g. Spotify DRM -> YouTube search, plain query -> ytsearch1)
     target_url, resolved_hint = _resolve_media_url(raw_url)
+    hostname = (urllib.parse.urlparse(target_url).hostname or "").lower()
+    is_youtube = target_url.startswith("ytsearch") or hostname == "youtu.be" or hostname == "youtube.com" or hostname.endswith(".youtube.com")
+    youtube_runtime = _youtube_runtime() if is_youtube else None
     if resolved_hint:
         with _lock:
             task["title"] = resolved_hint
@@ -205,6 +225,12 @@ def _run_download(
         "no_warnings": False,
         "progress_hooks": [lambda d: _progress_hook(d, task_id)],
         "writethumbnail": True,
+        "socket_timeout": 20,
+        "retries": 2,
+        "extractor_retries": 2,
+        "fragment_retries": 2,
+        "noplaylist": True,
+        "playlistend": 1,
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     }
 
@@ -213,6 +239,8 @@ def _run_download(
 
     if NODE_PATH and os.path.exists(NODE_PATH):
         ydl_opts["js_runtimes"] = {"node": {"path": NODE_PATH}}
+    if youtube_runtime:
+        ydl_opts["js_runtimes"] = youtube_runtime
 
     if media_format == "audio":
         # Extract audio stream as MP3 with embedded tags and thumbnail
@@ -242,6 +270,12 @@ def _run_download(
         else:
             format_str = "bestvideo+bestaudio/best"
 
+        limit = "[height<=1080]" if quality == "1080p" else "[height<=720]" if quality == "720p" else ""
+        if FFMPEG_PATH and os.path.exists(FFMPEG_PATH):
+            format_str = f"bestvideo[ext=mp4][vcodec^=avc1]{limit}+bestaudio[ext=m4a]/best[ext=mp4]{limit}/" + format_str
+        else:
+            format_str = f"best[ext=mp4]{limit}/best{limit}"
+
         ydl_opts.update({
             "format": format_str,
             "merge_output_format": "mp4",
@@ -269,14 +303,7 @@ def _run_download(
         except Exception:
             pass
 
-        # Fallback: scan target_dir for the most recently created supported file
-        candidates = sorted(
-            [f for f in target_dir.glob("*.*") if f.is_file() and f.suffix.lower() in config.SUPPORTED_EXTENSIONS],
-            key=lambda f: f.stat().st_mtime,
-            reverse=True
-        )
-        if candidates and (time.time() - candidates[0].stat().st_mtime < 180):
-            return candidates[0]
+        # Never guess from other files in the shared library.
         return None
 
     try:
@@ -293,6 +320,8 @@ def _run_download(
             raw_title = entry.get("title") or resolved_hint or "Downloaded Media"
             artist_name = entry.get("artist") or entry.get("uploader") or ""
             downloaded_file = _locate_file(ydl, entry)
+            if not downloaded_file:
+                raise RuntimeError("The downloader returned no completed media file.")
 
             song_id = None
             if downloaded_file and downloaded_file.exists():
@@ -332,6 +361,12 @@ def _run_download(
             fallback_opts: Dict[str, Any] = {
                 "outtmpl": out_template,
                 "quiet": True,
+                "socket_timeout": 20,
+                "retries": 1,
+                "extractor_retries": 1,
+                "fragment_retries": 1,
+                "noplaylist": True,
+                "playlistend": 1,
                 "no_warnings": True,
                 "progress_hooks": [lambda d: _progress_hook(d, task_id)],
                 "format": "bestaudio[ext=m4a]/bestaudio/best" if media_format == "audio" else "best[ext=mp4]/best",
@@ -341,6 +376,8 @@ def _run_download(
                 fallback_opts["ffmpeg_location"] = FFMPEG_PATH
             if NODE_PATH and os.path.exists(NODE_PATH):
                 fallback_opts["js_runtimes"] = {"node": {"path": NODE_PATH}}
+            if youtube_runtime:
+                fallback_opts["js_runtimes"] = youtube_runtime
 
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 info = ydl.extract_info(target_url, download=True)
@@ -354,6 +391,8 @@ def _run_download(
                 raw_title = entry.get("title") or resolved_hint or "Downloaded Media"
                 artist_name = entry.get("artist") or entry.get("uploader") or ""
                 downloaded_file = _locate_file(ydl, entry)
+                if not downloaded_file:
+                    raise RuntimeError("The downloader returned no completed media file.")
 
                 song_id = None
                 if downloaded_file and downloaded_file.exists():
@@ -393,7 +432,7 @@ def _run_download(
             if "DRM" in clean_err:
                 clean_err = "DRM protected stream. Try searching by song title."
             elif "Sign in to confirm" in clean_err:
-                clean_err = "Platform bot challenge detected. Please try again in a few moments."
+                clean_err = "YouTube requires sign-in or has blocked this server's IP. Retrying alone may not fix it. Check the server's yt-dlp setup and network access."
             elif "403" in clean_err:
                 clean_err = "Access forbidden by media host (HTTP 403). Stream may be geo-restricted."
             
@@ -402,6 +441,94 @@ def _run_download(
                 task["error"] = clean_err
                 if task["title"] == "Fetching metadata...":
                     task["title"] = resolved_hint or raw_url.split("?")[0].split("/")[-1] or "Download Failed"
+
+def _run_download(task_id, raw_url, media_format, quality, target_dir, destination="server", owner_id="host", owner_name="Host"):
+    """Supervise an isolated worker so extractor hangs cannot leave pending tasks."""
+    process = None
+    def fail(message):
+        with _lock:
+            _download_tasks[task_id].update(status="failed", error=message, title=_download_tasks[task_id].get("title") or raw_url)
+    try:
+        if getattr(sys, "frozen", False):
+            _perform_download(task_id, raw_url, media_format, quality, target_dir, destination, owner_id, owner_name)
+            return
+        with _lock:
+            initial = dict(_download_tasks[task_id])
+        process = subprocess.Popen(
+            [sys.executable, "-u", str(pathlib.Path(__file__).resolve()), "--download-worker"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace",
+            start_new_session=os.name != "nt",
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        process.stdin.write(json.dumps(initial) + "\n")
+        process.stdin.close()
+        def read_updates():
+            for line in process.stdout:
+                if not line.startswith("MEDIA_TASK:"):
+                    continue
+                try:
+                    update = json.loads(line[len("MEDIA_TASK:"):])
+                    with _lock:
+                        if _download_tasks[task_id]["status"] not in ("failed", "completed"):
+                            _download_tasks[task_id].update(update)
+                except (ValueError, TypeError):
+                    continue
+        reader = threading.Thread(target=read_updates, daemon=True)
+        reader.start()
+        started = time.monotonic()
+        while process.poll() is None:
+            elapsed = time.monotonic() - started
+            with _lock:
+                status = _download_tasks[task_id]["status"]
+            if (status == "pending" and elapsed > 120) or elapsed > 1800:
+                fail("The server timed out fetching metadata. Check internet access and the yt-dlp JavaScript runtime setup." if status == "pending" else "Download exceeded the 30-minute limit. Try a lower quality or shorter video.")
+                return
+            time.sleep(0.25)
+        reader.join(timeout=3)
+        with _lock:
+            status = _download_tasks[task_id]["status"]
+        if status not in ("completed", "failed"):
+            fail("The download worker stopped unexpectedly. Check the server's Python dependencies and folder permissions.")
+    except Exception as error:
+        logger.exception("Download worker failed")
+        fail(f"Could not start download: {error}")
+    finally:
+        if process:
+            if process.poll() is None:
+                if os.name == "nt":
+                    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                process.wait(timeout=10)
+            if process.stdout:
+                process.stdout.close()
+
+
+def _download_worker():
+    task = json.loads(sys.stdin.readline())
+    task_id = task["id"]
+    _download_tasks[task_id] = task
+    done = threading.Event()
+    def emit():
+        with _lock:
+            print("MEDIA_TASK:" + json.dumps(dict(task)), flush=True)
+    def report():
+        while not done.wait(0.5):
+            emit()
+    threading.Thread(target=report, daemon=True).start()
+    try:
+        _perform_download(task_id, task["url"], task["format"], task["quality"], pathlib.Path(task["target_dir"]), task["destination"], task["owner_id"], task["owner_name"])
+    except Exception as error:
+        with _lock:
+            task.update(status="failed", error=f"Download failed: {error}")
+    finally:
+        done.set()
+        emit()
+
 
 def start_download(
     url: str,
@@ -416,6 +543,8 @@ def start_download(
     Enqueues a download task in background and returns task_id.
     destination: "server" (saves to host media library) or "client" (saves to staging for direct browser download)
     """
+    if media_format not in ("audio", "video") or destination not in ("server", "client"):
+        raise ValueError("Choose Audio or Video and a valid download destination.")
     task_id = str(uuid.uuid4())
     
     current_settings = settings.load_settings()
@@ -458,5 +587,9 @@ def clear_downloads() -> None:
             tid: t for tid, t in _download_tasks.items()
             if t.get("status") in ("downloading", "pending", "processing")
         }
+
+
+if __name__ == "__main__" and "--download-worker" in sys.argv:
+    _download_worker()
 
 

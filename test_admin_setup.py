@@ -1,4 +1,6 @@
 import unittest
+import pathlib
+import tempfile
 from unittest.mock import patch
 from starlette.requests import Request
 from fastapi import HTTPException
@@ -34,6 +36,33 @@ class AdminSetupTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as error:
                 main.update_settings(main.UpdateSettingsRequest(admin_token='takeover'), request)
             self.assertEqual(error.exception.status_code, 403)
+
+    def test_browse_media_folders_and_boundaries(self):
+        with tempfile.TemporaryDirectory(dir=main.config.DATA_DIR) as temp:
+            root = pathlib.Path(temp).resolve() / 'Media'
+            root.mkdir()
+            (root / 'Videos').mkdir()
+            (root / 'Music').mkdir()
+            (root / 'song.mp3').write_bytes(b'')
+            self.current['shared_folders'] = [{'path': str(root)}]
+            locations = main.browse_server_folders(self.request())
+            self.assertIn(str(root), [f['path'] for f in locations['folders']])
+            result = main.browse_server_folders(self.request(), str(root))
+            self.assertEqual([f['name'] for f in result['folders']], ['Music', 'Videos'])
+            self.assertIsNone(result['parent'])
+            child = main.browse_server_folders(self.request(), str(root / 'Music'))
+            self.assertEqual(child['parent'], str(root))
+            self.assertEqual(child['folders'], [])
+            for path in (str(root.parent), str(root / '..')):
+                with self.assertRaises(HTTPException) as error:
+                    main.browse_server_folders(self.request(), path)
+                self.assertEqual(error.exception.status_code, 403)
+            with self.assertRaises(HTTPException) as error:
+                main.browse_server_folders(self.request('8.8.8.8'), str(root))
+            self.assertEqual(error.exception.status_code, 403)
+            with self.assertRaises(HTTPException) as error:
+                main.browse_server_folders(self.request(), str(root / 'Missing'))
+            self.assertEqual(error.exception.status_code, 404)
 
 if __name__ == '__main__':
     unittest.main()
