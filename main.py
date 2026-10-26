@@ -187,7 +187,9 @@ def is_host_admin(request: Optional[Request]) -> bool:
 
     # 3. If trust_lan_admin is explicitly enabled in settings (e.g. on dedicated home servers)
     try:
-        if not is_via_cloudflare and app_settings.get("trust_lan_admin", False) and is_lan_ip(client_ip):
+        direct_lan = not is_via_cloudflare and not request.headers.get("x-forwarded-for") and is_lan_ip(request.client.host if request.client else "")
+        password_unset = not app_settings.get("admin_token", "").strip()
+        if direct_lan and (password_unset or app_settings.get("trust_lan_admin", False)):
             return True
     except Exception:
         pass
@@ -317,7 +319,14 @@ def generate_qr_code(url: Optional[str] = None):
 
 @app.get("/api/settings")
 def get_all_settings():
-    return settings.load_settings()
+    return public_settings(settings.load_settings())
+
+
+def public_settings(current):
+    result = dict(current)
+    result["admin_password_set"] = bool(result.pop("admin_token", "").strip())
+    result.pop("global_tunnel_token", None)
+    return result
 
 @app.post("/api/settings")
 def update_settings(body: UpdateSettingsRequest, request: Request):
@@ -352,7 +361,7 @@ def update_settings(body: UpdateSettingsRequest, request: Request):
     settings.save_settings(current)
     # Trigger rescan to apply privacy mode
     scanner.scan_library()
-    return current
+    return public_settings(current)
 
 # --- Worldwide Remote Access (Global Cloudflare Tunnel) Endpoints ---
 @app.get("/api/tunnel/status")

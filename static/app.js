@@ -782,21 +782,67 @@ async function fetchSettings() {
         banner.innerHTML = `
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
             <span>🔒 <strong>Connected as Peer Client:</strong> Browsing mode.</span>
-            <button id="unlock-admin-btn" class="secondary-btn" style="padding: 3px 10px; font-size: 0.75rem;">🔑 Unlock Admin</button>
+            ${data.admin_password_set ? '<button id="unlock-admin-btn" class="secondary-btn" style="padding: 3px 10px; font-size: 0.75rem;">🔑 Unlock Admin</button>' : '<span>No admin password set. Open the server on its local network to manage settings.</span>'}
           </div>
         `;
         const unlockBtn = document.getElementById('unlock-admin-btn');
         if (unlockBtn) {
-          unlockBtn.onclick = () => {
+          unlockBtn.onclick = async () => {
             const pin = prompt('Enter Admin Token / PIN:');
             if (pin !== null && pin.trim()) {
               localStorage.setItem('media_admin_token', pin.trim());
-              fetchStatus();
-              fetchSettings();
+              await fetchStatus();
+              if (!state.isAdmin) {
+                localStorage.removeItem('media_admin_token');
+                alert('Incorrect admin password. Please try again.');
+              }
+              await fetchSettings();
             }
           };
         }
       }
+    }
+
+    let passwordPanel = document.getElementById('admin-password-panel');
+    if (!passwordPanel && banner) {
+      passwordPanel = document.createElement('div');
+      passwordPanel.id = 'admin-password-panel';
+      passwordPanel.style.cssText = 'margin: 16px 0; padding: 16px; border: 1px solid var(--border-subtle); border-radius: 12px;';
+      banner.after(passwordPanel);
+    }
+    if (passwordPanel) {
+      passwordPanel.hidden = !state.isAdmin;
+      passwordPanel.innerHTML = `<h3>Admin password (optional)</h3>
+        <p>${data.admin_password_set ? 'An admin password is set.' : 'No password is set. Devices on your local network can manage this server.'} Choose your own password to require it for LAN administration.</p>
+        <form id="admin-password-form" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+          <input id="admin-new-password" type="password" autocomplete="new-password" placeholder="New password" required aria-label="New admin password">
+          <input id="admin-confirm-password" type="password" autocomplete="new-password" placeholder="Confirm password" required aria-label="Confirm admin password">
+          <button class="primary-btn" type="submit">${data.admin_password_set ? 'Change password' : 'Set password'}</button>
+          ${data.admin_password_set ? '<button class="secondary-btn" type="button" id="remove-admin-password">Remove password</button>' : ''}
+        </form>`;
+      const savePassword = async (password) => {
+        try {
+          const response = await apiFetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: password }) });
+          if (!response.ok) throw new Error('Could not update the admin password.');
+          if (password) localStorage.setItem('media_admin_token', password);
+          else localStorage.removeItem('media_admin_token');
+          await fetchStatus();
+          await fetchSettings();
+        } catch (error) { alert(error.message); }
+      };
+      document.getElementById('admin-password-form').onsubmit = async (event) => {
+        event.preventDefault();
+        const password = document.getElementById('admin-new-password').value.trim();
+        if (!password || password !== document.getElementById('admin-confirm-password').value.trim()) {
+          alert('Enter the same non-empty password in both fields.');
+          return;
+        }
+        await savePassword(password);
+      };
+      const removePassword = document.getElementById('remove-admin-password');
+      if (removePassword) removePassword.onclick = async () => {
+        if (confirm('Remove the password and allow local network devices to manage this server?')) await savePassword('');
+      };
     }
 
     masterSharingToggle.checked = data.sharing_enabled !== false;

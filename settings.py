@@ -84,6 +84,21 @@ def load_settings() -> Dict[str, Any]:
                 data["shared_folders"] = []
             if "download_dir" not in data:
                 data["download_dir"] = str(config.DEFAULT_MUSIC_DIR)
+            # Repair the bundled Windows example only on a Linux host where
+            # the confirmed CasaOS video library actually exists.
+            if os.name != "nt" and pathlib.Path("/DATA/Media/Videos").is_dir():
+                changed = False
+                for folder in data["shared_folders"]:
+                    if folder.get("path", "").replace("\\", "/").rstrip("/").lower() == "d:/media player":
+                        folder.update(path="/DATA/Media/Videos", name="Videos", type="video")
+                        changed = True
+                if changed:
+                    music = pathlib.Path("/DATA/Media/Music")
+                    if music.is_dir():
+                        if not any(f.get("path") == str(music) for f in data["shared_folders"]):
+                            data["shared_folders"].append({"id": str(uuid.uuid4()), "path": str(music), "name": "Music", "type": "music", "enabled": True})
+                        data["download_dir"] = str(music)
+                    save_settings(data)
             return data
     except Exception:
         return get_default_settings()

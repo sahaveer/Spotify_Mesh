@@ -57,6 +57,9 @@ VIDEO_EXTENSIONS = {
     ".avi",
     ".m4v",
     ".ts",
+    ".mpg",
+    ".mpeg",
+    ".vob",
 }
 
 PHOTO_EXTENSIONS = {
