@@ -1,6 +1,6 @@
 {
   "device_id": "eea29866-3c96-4aec-b81d-e254d0a904db",
-  "device_name": "MediaHub Server",
+  "device_name": "Hijacked Hub",
   "sharing_enabled": true,
   "download_dir": "D:\\MEDIA PLAYER\\MUSIC",
   "shared_folders": [
@@ -10,6 +10,20 @@
       "name": "CasaOS Media Library",
       "type": "both",
       "enabled": true
+    },
+    {
+      "id": "24e70e72-d933-4d9c-82c0-8e286da7bd8a",
+      "path": "C:\\Users\\Sahaveer\\PycharmProjects\\MediaPlayer\\data\\test_music",
+      "name": "Test Music",
+      "type": "music",
+      "enabled": true
+    },
+    {
+      "id": "b983f8c8-0ac6-4ac1-831b-eae53fefe8b9",
+      "path": "C:\\Users\\Sahaveer\\PycharmProjects\\MediaPlayer\\data\\test_videos",
+      "name": "Test Videos",
+      "type": "video",
+      "enabled": true
     }
   ],
   "global_access_enabled": true,
@@ -17,5 +31,6 @@
   "trust_tailscale_admin": true,
   "admin_token": "",
   "upload_approval_required": false,
-  "trust_lan_admin": false
+  "trust_lan_admin": false,
+  "download_browser_cookies": ""
 }

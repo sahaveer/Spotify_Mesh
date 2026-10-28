@@ -294,7 +294,7 @@ def test_decentralized_hub():
     assert stranger_view.json()["songs"][0]["is_owner"] is False
 
     # Non-owner remote client attempts to delete someone else's file -> MUST be HTTP 403 Forbidden!
-    remote_client = TestClient(app, client=("192.168.1.88", 54321))
+    remote_client = TestClient(app, client=("8.8.8.8", 54321))
 
     # [8] Testing Remote Peer Host Settings Protection (403 Forbidden for remote peers)
     rem_settings = remote_client.post("/api/settings", json={"device_name": "Hijacked Hub"})

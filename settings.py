@@ -50,6 +50,7 @@ def get_default_settings() -> Dict[str, Any]:
         "trust_lan_admin": False,  # Grant admin access to devices on local Wi-Fi/LAN (192.168.x.x, 10.x.x.x)
         "admin_token": "",  # Optional custom admin token / password for remote admin access
         "download_dir": default_download,
+        "download_browser_cookies": "",  # Optional default browser session cookies ("chrome", "edge", "firefox", or "")
         "shared_folders": shared_folders
     }
 
@@ -84,6 +85,8 @@ def load_settings() -> Dict[str, Any]:
                 data["shared_folders"] = []
             if "download_dir" not in data:
                 data["download_dir"] = str(config.DEFAULT_MUSIC_DIR)
+            if "download_browser_cookies" not in data:
+                data["download_browser_cookies"] = ""
             # Repair the bundled Windows example only on a Linux host where
             # the confirmed CasaOS video library actually exists.
             if os.name != "nt" and pathlib.Path("/DATA/Media/Videos").is_dir():

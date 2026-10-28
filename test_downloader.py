@@ -63,6 +63,45 @@ class DownloaderTests(unittest.TestCase):
             self.assertEqual(task['status'],'failed')
             self.assertTrue(task['error'])
 
+    def test_browser_cookies_configured_in_ydl_opts(self):
+        with tempfile.TemporaryDirectory(dir=config.DATA_DIR) as directory:
+            root = pathlib.Path(directory)
+            task_id = "test_cookies"
+            task = {'id': task_id, 'title': 'Fetching metadata...', 'status': 'pending', 'target_dir': str(root)}
+            downloader._download_tasks[task_id] = task
+            output = root / (task_id + '_Demo.mp4')
+            options = []
+
+            class FakeYDL:
+                def __init__(self, opts): options.append(opts)
+                def __enter__(self): return self
+                def __exit__(self, *args): pass
+                def prepare_filename(self, entry): return str(output)
+                def extract_info(self, url, download):
+                    output.write_bytes(b'x'*1024)
+                    return {'title': 'Demo Instagram Reel', 'duration': 15}
+
+            with patch('downloader.yt_dlp.YoutubeDL', FakeYDL), patch('downloader.scanner.parse_media_file', return_value={'id': 'ig_reel', 'title': 'Demo Reel'}), patch('database.upsert_song'), patch('downloader.threading.Thread'):
+                downloader._perform_download(task_id, 'https://www.instagram.com/reel/C3xyz99/', 'video', 'best', root, 'server', cookies_browser='chrome')
+
+            self.assertEqual(task['status'], 'completed')
+            self.assertEqual(options[0].get('cookiesfrombrowser'), ('chrome',))
+
+    def test_start_download_respects_cookies_browser_override(self):
+        with patch('downloader.threading.Thread') as mock_thread:
+            task_id = downloader.start_download(
+                url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                media_format="video",
+                quality="1080p",
+                destination="server",
+                cookies_browser="firefox"
+            )
+            task = downloader.get_download_status(task_id)
+            self.assertEqual(task["cookies_browser"], "firefox")
+            mock_thread.assert_called_once()
+            args = mock_thread.call_args[1]["args"]
+            self.assertEqual(args[-1], "firefox")  # cookies_browser is the last argument
+
     def test_missing_youtube_support_is_actionable(self):
         with patch('downloader.importlib.util.find_spec',return_value=None):
             with self.assertRaisesRegex(RuntimeError,'yt-dlp'):

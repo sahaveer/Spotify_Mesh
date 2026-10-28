@@ -203,11 +203,12 @@ def _perform_download(
     target_dir: pathlib.Path,
     destination: str = "server",
     owner_id: str = "host",
-    owner_name: str = "Host"
+    owner_name: str = "Host",
+    cookies_browser: Optional[str] = None
 ):
     task = _download_tasks[task_id]
     target_dir.mkdir(parents=True, exist_ok=True)
-    out_template = str(target_dir / "%(title)s [%(id)s].%(ext)s")
+    out_template = str(target_dir / "%(title).100B [%(id)s].%(ext)s")
 
     # Resolve URL (e.g. Spotify DRM -> YouTube search, plain query -> ytsearch1)
     target_url, resolved_hint = _resolve_media_url(raw_url)
@@ -233,6 +234,10 @@ def _perform_download(
         "playlistend": 1,
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     }
+
+    # Browser cookies: unlocks login-gated Instagram reels/posts, age gates & bypasses bot checks
+    if cookies_browser and str(cookies_browser).strip().lower() not in ("none", "off", "disabled", "false", ""):
+        ydl_opts["cookiesfrombrowser"] = (str(cookies_browser).strip().lower(),)
 
     if FFMPEG_PATH and os.path.exists(FFMPEG_PATH):
         ydl_opts["ffmpeg_location"] = FFMPEG_PATH
@@ -378,6 +383,11 @@ def _perform_download(
                 fallback_opts["js_runtimes"] = {"node": {"path": NODE_PATH}}
             if youtube_runtime:
                 fallback_opts["js_runtimes"] = youtube_runtime
+            if cookies_browser and str(cookies_browser).strip().lower() not in ("none", "off", "disabled", "false", ""):
+                if "cookie" not in str(e).lower():
+                    fallback_opts["cookiesfrombrowser"] = (str(cookies_browser).strip().lower(),)
+                else:
+                    logger.warning(f"Browser cookies from '{cookies_browser}' caused extraction failure ({e}). Retrying fallback without cookies.")
 
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 info = ydl.extract_info(target_url, download=True)
@@ -431,10 +441,12 @@ def _perform_download(
             clean_err = str(err)
             if "DRM" in clean_err:
                 clean_err = "DRM protected stream. Try searching by song title."
-            elif "Sign in to confirm" in clean_err:
-                clean_err = "YouTube requires sign-in or has blocked this server's IP. Retrying alone may not fix it. Check the server's yt-dlp setup and network access."
+            elif "Sign in to confirm" in clean_err or "bot" in clean_err.lower():
+                clean_err = "YouTube requires sign-in or detected a bot check. Enable Browser Cookies (e.g. Chrome) in Downloader."
+            elif "login" in clean_err.lower() and "instagram" in clean_err.lower():
+                clean_err = "Instagram requires login to view this reel/post. Enable Browser Cookies (e.g. Chrome) in Downloader."
             elif "403" in clean_err:
-                clean_err = "Access forbidden by media host (HTTP 403). Stream may be geo-restricted."
+                clean_err = "Access forbidden by media host (HTTP 403). Stream may be geo-restricted or require login cookies."
             
             with _lock:
                 task["status"] = "failed"
@@ -442,7 +454,7 @@ def _perform_download(
                 if task["title"] == "Fetching metadata...":
                     task["title"] = resolved_hint or raw_url.split("?")[0].split("/")[-1] or "Download Failed"
 
-def _run_download(task_id, raw_url, media_format, quality, target_dir, destination="server", owner_id="host", owner_name="Host"):
+def _run_download(task_id, raw_url, media_format, quality, target_dir, destination="server", owner_id="host", owner_name="Host", cookies_browser=None):
     """Supervise an isolated worker so extractor hangs cannot leave pending tasks."""
     process = None
     def fail(message):
@@ -450,7 +462,7 @@ def _run_download(task_id, raw_url, media_format, quality, target_dir, destinati
             _download_tasks[task_id].update(status="failed", error=message, title=_download_tasks[task_id].get("title") or raw_url)
     try:
         if getattr(sys, "frozen", False):
-            _perform_download(task_id, raw_url, media_format, quality, target_dir, destination, owner_id, owner_name)
+            _perform_download(task_id, raw_url, media_format, quality, target_dir, destination, owner_id, owner_name, cookies_browser)
             return
         with _lock:
             initial = dict(_download_tasks[task_id])
@@ -521,7 +533,17 @@ def _download_worker():
             emit()
     threading.Thread(target=report, daemon=True).start()
     try:
-        _perform_download(task_id, task["url"], task["format"], task["quality"], pathlib.Path(task["target_dir"]), task["destination"], task["owner_id"], task["owner_name"])
+        _perform_download(
+            task_id,
+            task["url"],
+            task["format"],
+            task["quality"],
+            pathlib.Path(task["target_dir"]),
+            task["destination"],
+            task["owner_id"],
+            task["owner_name"],
+            task.get("cookies_browser")
+        )
     except Exception as error:
         with _lock:
             task.update(status="failed", error=f"Download failed: {error}")
@@ -537,11 +559,13 @@ def start_download(
     destination: str = "server",
     custom_folder: Optional[str] = None,
     owner_id: str = "host",
-    owner_name: str = "Host"
+    owner_name: str = "Host",
+    cookies_browser: Optional[str] = None
 ) -> str:
     """
     Enqueues a download task in background and returns task_id.
     destination: "server" (saves to host media library) or "client" (saves to staging for direct browser download)
+    cookies_browser: "chrome", "edge", "firefox", or None/empty
     """
     if media_format not in ("audio", "video") or destination not in ("server", "client"):
         raise ValueError("Choose Audio or Video and a valid download destination.")
@@ -555,6 +579,15 @@ def start_download(
     else:
         target_dir = settings.get_target_upload_folder(media_type="video" if media_format == "video" else "audio")
 
+    # Resolve cookies browser choice: per-request option overrides setting default
+    active_cookies_browser = cookies_browser if cookies_browser is not None else current_settings.get("download_browser_cookies", "")
+    if active_cookies_browser:
+        active_cookies_browser = str(active_cookies_browser).strip().lower()
+        if active_cookies_browser in ("none", "off", "disabled", "false", ""):
+            active_cookies_browser = None
+    else:
+        active_cookies_browser = None
+
     with _lock:
         _download_tasks[task_id] = {
             "id": task_id,
@@ -565,6 +598,7 @@ def start_download(
             "destination": destination,
             "owner_id": owner_id,
             "owner_name": owner_name,
+            "cookies_browser": active_cookies_browser,
             "status": "pending",
             "progress": 0,
             "target_dir": str(target_dir),
@@ -573,7 +607,7 @@ def start_download(
 
     thread = threading.Thread(
         target=_run_download,
-        args=(task_id, url, media_format, quality, target_dir, destination, owner_id, owner_name),
+        args=(task_id, url, media_format, quality, target_dir, destination, owner_id, owner_name, active_cookies_browser),
         daemon=True
     )
     thread.start()

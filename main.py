@@ -105,6 +105,7 @@ class UpdateSettingsRequest(BaseModel):
     download_dir: Optional[str] = None
     trust_tailscale_admin: Optional[bool] = None
     admin_token: Optional[str] = None
+    download_browser_cookies: Optional[str] = None
 
 class AddFolderRequest(BaseModel):
     path: str
@@ -119,6 +120,7 @@ class DownloadMediaRequest(BaseModel):
     custom_folder: Optional[str] = None
     client_id: Optional[str] = None
     device_name: Optional[str] = None
+    cookies_browser: Optional[str] = None
 
 class ClientPingRequest(BaseModel):
     client_id: str
@@ -357,6 +359,8 @@ def update_settings(body: UpdateSettingsRequest, request: Request):
         current["trust_tailscale_admin"] = body.trust_tailscale_admin
     if body.admin_token is not None:
         current["admin_token"] = body.admin_token.strip()
+    if body.download_browser_cookies is not None:
+        current["download_browser_cookies"] = body.download_browser_cookies.strip().lower()
 
     settings.save_settings(current)
     # Trigger rescan to apply privacy mode
@@ -953,7 +957,8 @@ def enqueue_download(body: DownloadMediaRequest, request: Request):
         task_id = downloader.start_download(
             url=body.url.strip(), media_format=body.format, quality=body.quality,
             destination=body.destination or "server", custom_folder=body.custom_folder,
-            owner_id=cid, owner_name=dname
+            owner_id=cid, owner_name=dname,
+            cookies_browser=body.cookies_browser
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))

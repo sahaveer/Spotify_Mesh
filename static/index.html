@@ -491,7 +491,7 @@
           
           <div class="downloader-card">
             <div class="input-group">
-              <input type="text" id="dl-url-input" placeholder="Paste YouTube, Spotify, or media link (or type song name to search)" autocomplete="off">
+              <input type="text" id="dl-url-input" placeholder="Paste YouTube, Instagram (Reel/Post), Spotify, or media link (or search by title)" autocomplete="off">
             </div>
 
             <div class="downloader-options">
@@ -506,10 +506,17 @@
                 </label>
               </div>
 
-              <select id="dl-quality-select" class="dropdown">
+              <select id="dl-quality-select" class="dropdown" title="Download Quality">
                 <option value="best">Best Quality</option>
                 <option value="1080p">1080p HD</option>
                 <option value="720p">720p HD</option>
+              </select>
+
+              <select id="dl-cookies-select" class="dropdown" title="Use browser cookies for private/restricted Instagram Reels or YouTube bot-checks">
+                <option value="">🍪 Cookies: None</option>
+                <option value="chrome">🍪 Chrome</option>
+                <option value="edge">🍪 Edge</option>
+                <option value="firefox">🍪 Firefox</option>
               </select>
 
               <div class="destination-toggle">
@@ -534,7 +541,7 @@
               </button>
             </div>
             <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 8px;">
-              💡 <strong>Server downloads</strong> automatically save to your shared Media folders (e.g. <code>/DATA/Media/Movies</code> for videos, <code>/DATA/Media/Music</code> for audio) and index instantly.
+              💡 Supports <strong>YouTube, Instagram (Reels & Posts), Spotify, TikTok</strong> & 1,000+ sites. Use <strong>Cookies: Chrome/Edge</strong> for login-gated Instagram reels or age-restricted videos.
             </p>
           </div>
 

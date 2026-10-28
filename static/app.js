@@ -188,6 +188,7 @@ const detailPlayBtn = document.getElementById('detail-play-btn');
 // Downloader Elements
 const dlUrlInput = document.getElementById('dl-url-input');
 const dlQualitySelect = document.getElementById('dl-quality-select');
+const dlCookiesSelect = document.getElementById('dl-cookies-select');
 const startDownloadBtn = document.getElementById('start-download-btn');
 const clearDownloadsBtn = document.getElementById('clear-downloads-btn');
 
@@ -1571,13 +1572,14 @@ if (dlUrlInput) {
 startDownloadBtn.addEventListener('click', async () => {
   const url = dlUrlInput.value.trim();
   if (!url) {
-    alert('Please paste a YouTube, Spotify, or media link, or enter a song name to search');
+    alert('Please paste a YouTube, Instagram, Spotify, or media link, or enter a song name to search');
     return;
   }
 
   const format = document.querySelector('input[name="dl-format"]:checked').value;
   const quality = dlQualitySelect.value;
   const destination = document.querySelector('input[name="dl-destination"]:checked')?.value || 'server';
+  const cookies_browser = dlCookiesSelect ? (dlCookiesSelect.value || null) : null;
 
   try {
     startDownloadBtn.disabled = true;
@@ -1592,6 +1594,7 @@ startDownloadBtn.addEventListener('click', async () => {
         format,
         quality,
         destination,
+        cookies_browser,
         client_id: clientId,
         device_name: getDeviceType()
       })
