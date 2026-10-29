@@ -88,6 +88,7 @@ class UpdateMediaMetadataRequest(BaseModel):
     album_artist: Optional[str] = None
     year: Optional[int] = None
     genre: Optional[str] = None
+    language: Optional[str] = None
     resolution: Optional[str] = None
     season: Optional[int] = None
     episode: Optional[int] = None
@@ -95,6 +96,21 @@ class UpdateMediaMetadataRequest(BaseModel):
 # Pydantic Schemas
 class CreatePlaylistRequest(BaseModel):
     name: str
+    description: Optional[str] = ""
+
+class UpdatePlaylistRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+class AddSongsToPlaylistRequest(BaseModel):
+    song_ids: Optional[List[str]] = None
+    song_id: Optional[str] = None
+
+class ReorderPlaylistRequest(BaseModel):
+    song_ids: List[str]
+
+class BatchDownloadSongsRequest(BaseModel):
+    song_ids: List[str]
 
 class UpdateSettingsRequest(BaseModel):
     device_name: Optional[str] = None
@@ -121,6 +137,7 @@ class DownloadMediaRequest(BaseModel):
     client_id: Optional[str] = None
     device_name: Optional[str] = None
     cookies_browser: Optional[str] = None
+    target_playlist_id: Optional[str] = None
 
 class ClientPingRequest(BaseModel):
     client_id: str
@@ -757,7 +774,8 @@ async def upload_media_file(
     request: Request,
     file: UploadFile = File(...),
     client_id: Optional[str] = Form(None),
-    device_name: Optional[str] = Form(None)
+    device_name: Optional[str] = Form(None),
+    playlist_id: Optional[str] = Form(None)
 ):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file selected")
@@ -816,6 +834,11 @@ async def upload_media_file(
         media_item = scanner.parse_media_file(save_path, owner_id=cid, owner_name=dname)
         if media_item:
             database.upsert_song(media_item)
+            if playlist_id:
+                try:
+                    database.add_song_to_playlist(playlist_id, media_item["id"])
+                except Exception:
+                    pass
         else:
             scanner.scan_library()
 
@@ -958,7 +981,8 @@ def enqueue_download(body: DownloadMediaRequest, request: Request):
             url=body.url.strip(), media_format=body.format, quality=body.quality,
             destination=body.destination or "server", custom_folder=body.custom_folder,
             owner_id=cid, owner_name=dname,
-            cookies_browser=body.cookies_browser
+            cookies_browser=body.cookies_browser,
+            target_playlist_id=body.target_playlist_id
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
@@ -1293,6 +1317,7 @@ def list_songs(
     artist: Optional[str] = Query(None, description="Filter by artist name"),
     album: Optional[str] = Query(None, description="Filter by album title"),
     genre: Optional[str] = Query(None, description="Filter by genre"),
+    language: Optional[str] = Query(None, description="Filter by language"),
     media_type: str = Query("audio", description="'audio', 'video', or 'all'"),
     sort_by: str = Query("title", description="Field to sort by"),
     ascending: bool = Query(True, description="Sort direction"),
@@ -1310,6 +1335,7 @@ def list_songs(
         artist=artist,
         album=album,
         genre=genre,
+        language=language,
         media_type=media_type,
         sort_by=sort_by,
         ascending=ascending,
@@ -1494,15 +1520,29 @@ def compatible_playback_status(song_id: str):
 
 @app.get("/api/cover/{song_id}")
 def get_cover_art(song_id: str):
-    song = database.get_song(song_id)
-    if not song or not song.get("cover_hash"):
-        raise HTTPException(status_code=404, detail="No cover art available")
-    
-    cover_file = config.COVERS_DIR / f"{song['cover_hash']}.jpg"
+    # Support direct cover_hash lookup or song_id lookup
+    cover_file = config.COVERS_DIR / f"{song_id}.jpg"
     if not cover_file.exists():
-        raise HTTPException(status_code=404, detail="Cover art file missing")
+        song = database.get_song(song_id)
+        if song and song.get("cover_hash"):
+            cover_file = config.COVERS_DIR / f"{song['cover_hash']}.jpg"
+    if not cover_file.exists():
+        raise HTTPException(status_code=404, detail="No cover art available")
 
     return FileResponse(str(cover_file), media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+# --- Genres, Languages & Years ---
+@app.get("/api/genres")
+def list_genres(media_type: str = "audio"):
+    return {"genres": database.get_genres(media_type)}
+
+@app.get("/api/languages")
+def list_languages(media_type: str = "audio"):
+    return {"languages": database.get_languages(media_type)}
+
+@app.get("/api/years")
+def list_years(media_type: str = "audio"):
+    return database.get_years(media_type)
 
 # --- Playlists ---
 @app.get("/api/playlists")
@@ -1513,22 +1553,154 @@ def list_playlists():
 def create_new_playlist(body: CreatePlaylistRequest):
     if not body.name.strip():
         raise HTTPException(status_code=400, detail="Playlist name cannot be empty")
-    pid = database.create_playlist(body.name.strip())
-    return {"id": pid, "name": body.name.strip()}
+    pid = database.create_playlist(body.name.strip(), getattr(body, "description", "") or "")
+    return {"id": pid, "name": body.name.strip(), "description": getattr(body, "description", "") or ""}
+
+@app.get("/api/playlists/{playlist_id}")
+def get_playlist_details(playlist_id: str):
+    pl = database.get_playlist(playlist_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    songs = database.get_playlist_songs(playlist_id)
+    return {"playlist": pl, "songs": songs}
+
+@app.put("/api/playlists/{playlist_id}")
+def update_playlist_info(playlist_id: str, body: UpdatePlaylistRequest):
+    pl = database.get_playlist(playlist_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    database.update_playlist(playlist_id, body.name, body.description)
+    return {"message": "Playlist updated", "playlist": database.get_playlist(playlist_id)}
 
 @app.get("/api/playlists/{playlist_id}/songs")
 def get_playlist_tracks(playlist_id: str):
     return {"songs": database.get_playlist_songs(playlist_id)}
+
+@app.post("/api/playlists/{playlist_id}/songs")
+def add_songs_to_pl_batch(playlist_id: str, body: AddSongsToPlaylistRequest):
+    pl = database.get_playlist(playlist_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    sids = []
+    if body.song_ids:
+        sids.extend(body.song_ids)
+    if body.song_id:
+        sids.append(body.song_id)
+    if not sids:
+        raise HTTPException(status_code=400, detail="No songs specified")
+    database.add_songs_to_playlist(playlist_id, sids)
+    return {"message": f"Added {len(sids)} songs to playlist", "playlist_id": playlist_id}
 
 @app.post("/api/playlists/{playlist_id}/songs/{song_id}")
 def add_song_to_pl(playlist_id: str, song_id: str):
     database.add_song_to_playlist(playlist_id, song_id)
     return {"message": "Song added to playlist"}
 
+@app.delete("/api/playlists/{playlist_id}/songs/{song_id}")
+def remove_song_from_pl(playlist_id: str, song_id: str):
+    database.remove_song_from_playlist(playlist_id, song_id)
+    return {"message": "Song removed from playlist"}
+
+@app.post("/api/playlists/{playlist_id}/reorder")
+def reorder_pl_songs(playlist_id: str, body: ReorderPlaylistRequest):
+    database.reorder_playlist_songs(playlist_id, body.song_ids)
+    return {"message": "Playlist reordered"}
+
 @app.delete("/api/playlists/{playlist_id}")
 def remove_playlist(playlist_id: str):
     database.delete_playlist(playlist_id)
     return {"message": "Playlist deleted"}
+
+@app.get("/api/playlists/{playlist_id}/export.m3u")
+def export_playlist_m3u(playlist_id: str, request: Request):
+    pl = database.get_playlist(playlist_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    songs = database.get_playlist_songs(playlist_id)
+    host = request.headers.get("host") or f"{mesh.get_local_ip()}:{config.PORT}"
+    base_url = f"http://{host}"
+    content = generate_m3u_content(songs, base_url)
+    safe_name = re.sub(r'[^a-zA-Z0-9_\- ]', '_', pl["name"]).strip() or "playlist"
+    return Response(
+        content=content,
+        media_type="audio/x-mpegurl",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.m3u"'}
+    )
+
+@app.get("/api/playlists/{playlist_id}/download")
+def download_playlist_zip(playlist_id: str):
+    import zipfile
+    pl = database.get_playlist(playlist_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    songs = database.get_playlist_songs(playlist_id)
+    if not songs:
+        raise HTTPException(status_code=400, detail="Playlist is empty")
+    
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        used_names = set()
+        for idx, s in enumerate(songs, 1):
+            fpath = pathlib.Path(s["path"])
+            if fpath.exists():
+                safe_title = re.sub(r'[\\/*?:"<>|]', "", s.get("title") or "Track").strip()
+                safe_artist = re.sub(r'[\\/*?:"<>|]', "", s.get("artist") or "Artist").strip()
+                ext = fpath.suffix or ".mp3"
+                arcname = f"{idx:02d} - {safe_artist} - {safe_title}{ext}"
+                if arcname in used_names:
+                    arcname = f"{idx:02d}_{s['id'][:6]} - {safe_artist} - {safe_title}{ext}"
+                used_names.add(arcname)
+                zf.write(fpath, arcname=arcname)
+    
+    zip_buffer.seek(0)
+    safe_pl_name = re.sub(r'[^a-zA-Z0-9_\- ]', '_', pl["name"]).strip() or "Playlist"
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_pl_name}.zip"',
+            "Content-Type": "application/zip"
+        }
+    )
+
+@app.post("/api/songs/download-zip")
+def download_batch_songs_zip(body: BatchDownloadSongsRequest):
+    import zipfile
+    if not body.song_ids:
+        raise HTTPException(status_code=400, detail="No songs specified")
+    
+    zip_buffer = io.BytesIO()
+    count = 0
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        used_names = set()
+        for idx, sid in enumerate(body.song_ids, 1):
+            s = database.get_song(sid)
+            if not s:
+                continue
+            fpath = pathlib.Path(s["path"])
+            if fpath.exists():
+                safe_title = re.sub(r'[\\/*?:"<>|]', "", s.get("title") or "Track").strip()
+                safe_artist = re.sub(r'[\\/*?:"<>|]', "", s.get("artist") or "Artist").strip()
+                ext = fpath.suffix or ".mp3"
+                arcname = f"{idx:02d} - {safe_artist} - {safe_title}{ext}"
+                if arcname in used_names:
+                    arcname = f"{idx:02d}_{s['id'][:6]} - {safe_artist} - {safe_title}{ext}"
+                used_names.add(arcname)
+                zf.write(fpath, arcname=arcname)
+                count += 1
+    
+    if count == 0:
+        raise HTTPException(status_code=404, detail="None of the requested media files were found on disk")
+        
+    zip_buffer.seek(0)
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="MediaHub_Selection.zip"',
+            "Content-Type": "application/zip"
+        }
+    )
 
 # --- Mesh Peers & Collective Library ---
 @app.get("/api/mesh/peers")

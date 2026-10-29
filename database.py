@@ -56,10 +56,14 @@ def init_db():
             cursor.execute("ALTER TABLE songs ADD COLUMN season INTEGER")
         if "episode" not in existing_cols:
             cursor.execute("ALTER TABLE songs ADD COLUMN episode INTEGER")
+        if "language" not in existing_cols:
+            cursor.execute("ALTER TABLE songs ADD COLUMN language TEXT DEFAULT 'Unknown'")
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_album ON songs(album)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_title ON songs(title)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_genre ON songs(genre)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_language ON songs(language)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_media_type ON songs(media_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_owner_id ON songs(owner_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_songs_year ON songs(year)")
@@ -69,9 +73,15 @@ def init_db():
             CREATE TABLE IF NOT EXISTS playlists (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
+                description TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        cursor.execute("PRAGMA table_info(playlists)")
+        pl_cols = {col["name"] for col in cursor.fetchall()}
+        if "description" not in pl_cols:
+            cursor.execute("ALTER TABLE playlists ADD COLUMN description TEXT DEFAULT ''")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS playlist_songs (
@@ -169,6 +179,7 @@ def upsert_song(song_data: Dict[str, Any]):
         "album_artist": song_data.get("artist") or "Unknown Artist",
         "year": None,
         "genre": "Unknown",
+        "language": "Unknown",
         "track_number": 1,
         "disc_number": 1,
         "duration": 0.0,
@@ -192,11 +203,11 @@ def upsert_song(song_data: Dict[str, Any]):
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO songs (
-                id, path, title, artist, album, album_artist, year, genre,
+                id, path, title, artist, album, album_artist, year, genre, language,
                 track_number, disc_number, duration, bitrate, filesize, mtime, cover_hash, mime_type,
                 media_type, resolution, season, episode, owner_id, owner_name
             ) VALUES (
-                :id, :path, :title, :artist, :album, :album_artist, :year, :genre,
+                :id, :path, :title, :artist, :album, :album_artist, :year, :genre, :language,
                 :track_number, :disc_number, :duration, :bitrate, :filesize, :mtime, :cover_hash, :mime_type,
                 :media_type, :resolution, :season, :episode, :owner_id, :owner_name
             )
@@ -207,6 +218,7 @@ def upsert_song(song_data: Dict[str, Any]):
                 album_artist = excluded.album_artist,
                 year = excluded.year,
                 genre = excluded.genre,
+                language = excluded.language,
                 track_number = excluded.track_number,
                 disc_number = excluded.disc_number,
                 duration = excluded.duration,
@@ -314,6 +326,7 @@ def get_songs(
     artist: Optional[str] = None,
     album: Optional[str] = None,
     genre: Optional[str] = None,
+    language: Optional[str] = None,
     media_type: str = "audio",  # 'audio', 'video', or 'all'
     sort_by: str = "title",
     ascending: bool = True,
@@ -386,9 +399,16 @@ def get_songs(
             sql += " AND album = ?"
             params.append(album)
 
-        if genre:
-            sql += " AND genre = ?"
+        if genre and genre != "all":
+            sql += " AND songs.genre = ?"
             params.append(genre)
+
+        if language and language != "all":
+            if language == "Unknown":
+                sql += " AND (songs.language = 'Unknown' OR songs.language IS NULL OR songs.language = '')"
+            else:
+                sql += " AND songs.language = ?"
+                params.append(language)
 
         if year is not None:
             sql += " AND songs.year = ?"
@@ -416,7 +436,7 @@ def get_songs(
             elif video_category == "tv":
                 sql += " AND (songs.genre = 'TV Show' OR songs.season IS NOT NULL)"
 
-        allowed_sorts = {"title", "artist", "album", "year", "duration", "track_number", "filesize", "mtime"}
+        allowed_sorts = {"title", "artist", "album", "year", "duration", "track_number", "filesize", "mtime", "genre", "language"}
         if sort_by not in allowed_sorts:
             sort_by = "title"
 
@@ -470,7 +490,7 @@ def get_videos(
 
 def update_media(media_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     allowed_fields = {
-        "title", "artist", "album", "album_artist", "year", "genre",
+        "title", "artist", "album", "album_artist", "year", "genre", "language",
         "track_number", "disc_number", "resolution", "season", "episode"
     }
     set_clauses = []
@@ -566,12 +586,80 @@ def get_stats() -> Dict[str, Any]:
 
         return stats
 
-# Playlists
-def create_playlist(name: str) -> str:
+# --- Genres, Languages & Years Browsing ---
+def get_genres(media_type: str = "audio") -> List[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                genre,
+                COUNT(id) AS song_count,
+                MAX(cover_hash) AS cover_hash
+            FROM songs
+            WHERE (? = 'all' OR media_type = ?) AND genre IS NOT NULL AND genre != ''
+            GROUP BY genre
+            ORDER BY song_count DESC, genre ASC
+        """, (media_type, media_type))
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_languages(media_type: str = "audio") -> List[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                COALESCE(NULLIF(language, ''), 'Unknown') AS language,
+                COUNT(id) AS song_count,
+                MAX(cover_hash) AS cover_hash
+            FROM songs
+            WHERE (? = 'all' OR media_type = ?)
+            GROUP BY COALESCE(NULLIF(language, ''), 'Unknown')
+            ORDER BY song_count DESC, language ASC
+        """, (media_type, media_type))
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_years(media_type: str = "audio") -> Dict[str, Any]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                year,
+                COUNT(id) AS song_count,
+                MAX(cover_hash) AS cover_hash
+            FROM songs
+            WHERE (? = 'all' OR media_type = ?) AND year IS NOT NULL AND year > 0
+            GROUP BY year
+            ORDER BY year DESC
+        """, (media_type, media_type))
+        years_list = [dict(row) for row in cursor.fetchall()]
+
+        cursor.execute("""
+            SELECT
+                SUM(CASE WHEN year >= 2020 THEN 1 ELSE 0 END) AS d2020s,
+                SUM(CASE WHEN year >= 2010 AND year < 2020 THEN 1 ELSE 0 END) AS d2010s,
+                SUM(CASE WHEN year >= 2000 AND year < 2010 THEN 1 ELSE 0 END) AS d2000s,
+                SUM(CASE WHEN year >= 1990 AND year < 2000 THEN 1 ELSE 0 END) AS d1990s,
+                SUM(CASE WHEN year >= 1980 AND year < 1990 THEN 1 ELSE 0 END) AS d1980s,
+                SUM(CASE WHEN year < 1980 AND year IS NOT NULL THEN 1 ELSE 0 END) AS classic
+            FROM songs
+            WHERE (? = 'all' OR media_type = ?)
+        """, (media_type, media_type))
+        decades_row = cursor.fetchone()
+        decades = {
+            "2020s": decades_row["d2020s"] or 0,
+            "2010s": decades_row["d2010s"] or 0,
+            "2000s": decades_row["d2000s"] or 0,
+            "1990s": decades_row["d1990s"] or 0,
+            "1980s": decades_row["d1980s"] or 0,
+            "classic": decades_row["classic"] or 0
+        } if decades_row else {}
+        return {"years": years_list, "decades": decades}
+
+# --- Playlists ---
+def create_playlist(name: str, description: str = "") -> str:
     pid = str(uuid.uuid4())
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO playlists (id, name) VALUES (?, ?)", (pid, name))
+        cursor.execute("INSERT INTO playlists (id, name, description) VALUES (?, ?, ?)", (pid, name.strip(), description.strip()))
         conn.commit()
     return pid
 
@@ -579,13 +667,74 @@ def get_playlists() -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT p.id, p.name, p.created_at, COUNT(ps.song_id) as song_count
+            SELECT p.id, p.name, COALESCE(p.description, '') AS description, p.created_at, 
+                   COUNT(ps.song_id) as song_count,
+                   COALESCE(SUM(s.duration), 0) as total_duration
             FROM playlists p
             LEFT JOIN playlist_songs ps ON p.id = ps.playlist_id
+            LEFT JOIN songs s ON ps.song_id = s.id
             GROUP BY p.id
             ORDER BY p.name ASC
         """)
-        return [dict(row) for row in cursor.fetchall()]
+        playlists = [dict(row) for row in cursor.fetchall()]
+        
+        for pl in playlists:
+            cursor.execute("""
+                SELECT s.cover_hash 
+                FROM playlist_songs ps
+                JOIN songs s ON ps.song_id = s.id
+                WHERE ps.playlist_id = ? AND s.cover_hash IS NOT NULL AND s.cover_hash != ''
+                ORDER BY ps.position ASC
+                LIMIT 4
+            """, (pl["id"],))
+            pl["sample_covers"] = [row["cover_hash"] for row in cursor.fetchall() if row["cover_hash"]]
+        return playlists
+
+def get_playlist(playlist_id: str) -> Optional[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.id, p.name, COALESCE(p.description, '') AS description, p.created_at,
+                   COUNT(ps.song_id) as song_count,
+                   COALESCE(SUM(s.duration), 0) as total_duration
+            FROM playlists p
+            LEFT JOIN playlist_songs ps ON p.id = ps.playlist_id
+            LEFT JOIN songs s ON ps.song_id = s.id
+            WHERE p.id = ?
+            GROUP BY p.id
+        """, (playlist_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        pl = dict(row)
+        cursor.execute("""
+            SELECT s.cover_hash 
+            FROM playlist_songs ps
+            JOIN songs s ON ps.song_id = s.id
+            WHERE ps.playlist_id = ? AND s.cover_hash IS NOT NULL AND s.cover_hash != ''
+            ORDER BY ps.position ASC
+            LIMIT 4
+        """, (playlist_id,))
+        pl["sample_covers"] = [r["cover_hash"] for r in cursor.fetchall() if r["cover_hash"]]
+        return pl
+
+def update_playlist(playlist_id: str, name: Optional[str] = None, description: Optional[str] = None) -> bool:
+    updates = []
+    params = []
+    if name is not None and name.strip():
+        updates.append("name = ?")
+        params.append(name.strip())
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description.strip())
+    if not updates:
+        return False
+    params.append(playlist_id)
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE playlists SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+        return cursor.rowcount > 0
 
 def get_playlist_songs(playlist_id: str) -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
@@ -607,6 +756,32 @@ def add_song_to_playlist(playlist_id: str, song_id: str):
             INSERT OR IGNORE INTO playlist_songs (playlist_id, song_id, position)
             VALUES (?, ?, ?)
         """, (playlist_id, song_id, next_pos))
+        conn.commit()
+
+def add_songs_to_playlist(playlist_id: str, song_ids: List[str]):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM playlist_songs WHERE playlist_id = ?", (playlist_id,))
+        next_pos = cursor.fetchone()[0]
+        for sid in song_ids:
+            cursor.execute("""
+                INSERT OR IGNORE INTO playlist_songs (playlist_id, song_id, position)
+                VALUES (?, ?, ?)
+            """, (playlist_id, sid, next_pos))
+            next_pos += 1
+        conn.commit()
+
+def remove_song_from_playlist(playlist_id: str, song_id: str):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM playlist_songs WHERE playlist_id = ? AND song_id = ?", (playlist_id, song_id))
+        conn.commit()
+
+def reorder_playlist_songs(playlist_id: str, song_ids: List[str]):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        for idx, sid in enumerate(song_ids):
+            cursor.execute("UPDATE playlist_songs SET position = ? WHERE playlist_id = ? AND song_id = ?", (idx, playlist_id, sid))
         conn.commit()
 
 def delete_playlist(playlist_id: str):

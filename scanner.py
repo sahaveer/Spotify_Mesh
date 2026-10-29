@@ -18,6 +18,30 @@ import config
 import settings
 import database
 
+LANGUAGE_MAP = {
+    "eng": "English", "en": "English",
+    "hin": "Hindi", "hi": "Hindi",
+    "spa": "Spanish", "es": "Spanish",
+    "fra": "French", "fre": "French", "fr": "French",
+    "deu": "German", "ger": "German", "de": "German",
+    "kor": "Korean", "ko": "Korean",
+    "jpn": "Japanese", "ja": "Japanese",
+    "tam": "Tamil", "ta": "Tamil",
+    "tel": "Telugu", "te": "Telugu",
+    "pan": "Punjabi", "pa": "Punjabi",
+    "ita": "Italian", "it": "Italian",
+    "por": "Portuguese", "pt": "Portuguese",
+    "rus": "Russian", "ru": "Russian",
+    "zho": "Chinese", "chi": "Chinese", "zh": "Chinese",
+    "ara": "Arabic", "ar": "Arabic",
+    "mar": "Marathi", "mr": "Marathi",
+    "ben": "Bengali", "bn": "Bengali",
+    "kan": "Kannada", "kn": "Kannada",
+    "mal": "Malayalam", "ml": "Malayalam",
+    "guj": "Gujarati", "gu": "Gujarati",
+    "urdu": "Urdu", "ur": "Urdu",
+}
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scanner")
 
@@ -291,6 +315,7 @@ def parse_media_file(file_path: pathlib.Path, folder_type: str = "both", owner_i
     album_artist = None
     year = None
     genre = "Movie" if is_video else "Unknown"
+    language = "Unknown"
     track_number = 1
     disc_number = 1
     season = None
@@ -421,12 +446,39 @@ def parse_media_file(file_path: pathlib.Path, folder_type: str = "both", owner_i
                 if t_genre and t_genre.strip():
                     genre = t_genre.strip()
 
+                t_lang = get_tag_val(["TLAN", "language", "\xa9lan", "LANGUAGE", "lang"])
+                if t_lang and t_lang.strip():
+                    raw_l = t_lang.strip().lower()
+                    language = LANGUAGE_MAP.get(raw_l, t_lang.strip().capitalize())
+
                 t_date = get_tag_val(["TDRC", "TYER", "date", "\xa9day", "DATE", "YEAR"])
                 if t_date and not year:
                     try:
                         year = int(str(t_date)[:4])
                     except ValueError:
                         pass
+
+        # Heuristic language detection if tag was missing
+        if language == "Unknown" and genre:
+            g_low = genre.lower()
+            if any(k in g_low for k in ["bollywood", "desi", "hindi"]):
+                language = "Hindi"
+            elif any(k in g_low for k in ["k-pop", "kpop", "korean"]):
+                language = "Korean"
+            elif any(k in g_low for k in ["j-pop", "jpop", "anime", "japanese"]):
+                language = "Japanese"
+            elif any(k in g_low for k in ["punjabi", "bhangra"]):
+                language = "Punjabi"
+            elif any(k in g_low for k in ["latin", "reggaeton", "salsa", "bachata", "spanish"]):
+                language = "Spanish"
+            elif "tamil" in g_low:
+                language = "Tamil"
+            elif "telugu" in g_low:
+                language = "Telugu"
+            elif "french" in g_low:
+                language = "French"
+            elif "german" in g_low:
+                language = "German"
 
         cover_hash, detected_res = extract_cover_art(media_obj, file_path, is_video=is_video)
         if is_video and not resolution and detected_res:
@@ -444,6 +496,7 @@ def parse_media_file(file_path: pathlib.Path, folder_type: str = "both", owner_i
         "album_artist": album_artist or artist,
         "year": year,
         "genre": genre,
+        "language": language,
         "track_number": track_number,
         "disc_number": disc_number,
         "season": season,

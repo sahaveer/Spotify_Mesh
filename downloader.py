@@ -204,7 +204,8 @@ def _perform_download(
     destination: str = "server",
     owner_id: str = "host",
     owner_name: str = "Host",
-    cookies_browser: Optional[str] = None
+    cookies_browser: Optional[str] = None,
+    target_playlist_id: Optional[str] = None
 ):
     task = _download_tasks[task_id]
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -343,6 +344,11 @@ def _perform_download(
                         song_id = media_item["id"]
                         raw_title = media_item["title"]
                         artist_name = media_item.get("artist", "")
+                        if target_playlist_id and song_id:
+                            try:
+                                database.add_song_to_playlist(target_playlist_id, song_id)
+                            except Exception as pl_err:
+                                logger.warning(f"Failed to add to playlist {target_playlist_id}: {pl_err}")
                 else:
                     raw_title = downloaded_file.stem
 
@@ -419,6 +425,11 @@ def _perform_download(
                             song_id = media_item["id"]
                             raw_title = media_item["title"]
                             artist_name = media_item.get("artist", "")
+                            if target_playlist_id and song_id:
+                                try:
+                                    database.add_song_to_playlist(target_playlist_id, song_id)
+                                except Exception as pl_err:
+                                    logger.warning(f"Failed to add to playlist {target_playlist_id}: {pl_err}")
                     else:
                         raw_title = downloaded_file.stem
 
@@ -457,12 +468,13 @@ def _perform_download(
 def _run_download(task_id, raw_url, media_format, quality, target_dir, destination="server", owner_id="host", owner_name="Host", cookies_browser=None):
     """Supervise an isolated worker so extractor hangs cannot leave pending tasks."""
     process = None
+    target_playlist_id = _download_tasks.get(task_id, {}).get("target_playlist_id")
     def fail(message):
         with _lock:
             _download_tasks[task_id].update(status="failed", error=message, title=_download_tasks[task_id].get("title") or raw_url)
     try:
         if getattr(sys, "frozen", False):
-            _perform_download(task_id, raw_url, media_format, quality, target_dir, destination, owner_id, owner_name, cookies_browser)
+            _perform_download(task_id, raw_url, media_format, quality, target_dir, destination, owner_id, owner_name, cookies_browser, target_playlist_id)
             return
         with _lock:
             initial = dict(_download_tasks[task_id])
@@ -542,7 +554,8 @@ def _download_worker():
             task["destination"],
             task["owner_id"],
             task["owner_name"],
-            task.get("cookies_browser")
+            task.get("cookies_browser"),
+            task.get("target_playlist_id")
         )
     except Exception as error:
         with _lock:
@@ -560,7 +573,8 @@ def start_download(
     custom_folder: Optional[str] = None,
     owner_id: str = "host",
     owner_name: str = "Host",
-    cookies_browser: Optional[str] = None
+    cookies_browser: Optional[str] = None,
+    target_playlist_id: Optional[str] = None
 ) -> str:
     """
     Enqueues a download task in background and returns task_id.
@@ -599,6 +613,7 @@ def start_download(
             "owner_id": owner_id,
             "owner_name": owner_name,
             "cookies_browser": active_cookies_browser,
+            "target_playlist_id": target_playlist_id,
             "status": "pending",
             "progress": 0,
             "target_dir": str(target_dir),
