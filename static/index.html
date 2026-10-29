@@ -432,6 +432,42 @@
             </div>
           </div>
 
+          <!-- Quick Category Ribbon -->
+          <div class="song-quick-ribbon-container">
+            <div class="song-quick-ribbon" id="song-quick-ribbon">
+              <button class="ribbon-chip active" data-ribbon="all">🎵 All Tracks</button>
+              <button class="ribbon-chip" data-ribbon="albums">💿 Albums</button>
+              <button class="ribbon-chip" data-ribbon="artists">🎙️ Artists</button>
+              <button class="ribbon-chip" data-ribbon="devotional">🪔 Devotional</button>
+              <button class="ribbon-chip" data-ribbon="languages-menu">🌐 Languages ▾</button>
+              <button class="ribbon-chip" data-ribbon="eras-menu">⏳ Eras & Decades ▾</button>
+              <button class="ribbon-chip" data-ribbon="smart-mixes-menu">⚡ Smart Auto-Mixes ▾</button>
+            </div>
+            <!-- Sub-ribbon for Languages (populated dynamically) -->
+            <div class="sub-ribbon hidden" id="sub-ribbon-languages"></div>
+            <!-- Sub-ribbon for Eras (populated dynamically) -->
+            <div class="sub-ribbon hidden" id="sub-ribbon-eras"></div>
+            <!-- Sub-ribbon for Smart Mixes (populated dynamically) -->
+            <div class="sub-ribbon hidden" id="sub-ribbon-smart-mixes"></div>
+          </div>
+
+          <!-- Active Smart Combo Banner -->
+          <div class="smart-combo-banner hidden" id="smart-combo-banner">
+            <div class="smart-combo-left">
+              <span class="smart-combo-badge">SMART AUTO MIX</span>
+              <div>
+                <h3 id="smart-combo-title" style="margin:0; font-size:1.05rem; font-weight:700;">1990s TELUGU</h3>
+                <p id="smart-combo-subtitle" style="margin:2px 0 0 0; font-size:0.8rem; color:var(--text-secondary);">18 tracks • 1h 14m</p>
+              </div>
+            </div>
+            <div class="smart-combo-actions" style="display:flex; align-items:center; gap:8px;">
+              <button id="smart-combo-play-btn" class="primary-btn" style="padding:6px 14px; font-size:0.85rem;">▶ Play Mix</button>
+              <button id="smart-combo-shuffle-btn" class="secondary-btn" style="padding:6px 14px; font-size:0.85rem;">🔀 Shuffle</button>
+              <button id="smart-combo-save-btn" class="secondary-btn" style="padding:6px 14px; font-size:0.85rem;" title="Save this auto mix as a permanent custom playlist">💾 Save as Playlist</button>
+              <button id="smart-combo-close-btn" class="icon-btn" title="Clear filter" style="padding:6px;">✕</button>
+            </div>
+          </div>
+
           <div class="song-list" id="song-list"></div>
         </div>
 
@@ -794,15 +830,29 @@
           <div class="view-header">
             <div>
               <h1>Playlists</h1>
-              <p class="view-subtitle" id="playlists-subtitle">Create, share, and batch download your favorite playlists</p>
+              <p class="view-subtitle" id="playlists-subtitle">Create custom playlists, explore smart auto-mixes, or import from files</p>
+              <div class="playlist-tabs-bar" style="display:flex; gap:8px; margin-top:10px;">
+                <button class="filter-pill active" id="pl-tab-all" data-pl-tab="all">All Playlists</button>
+                <button class="filter-pill" id="pl-tab-smart" data-pl-tab="smart">⚡ Smart Auto-Mixes</button>
+                <button class="filter-pill" id="pl-tab-custom" data-pl-tab="custom">👤 Custom Playlists</button>
+              </div>
             </div>
-            <div class="view-controls">
+            <div class="view-controls" style="display:flex; gap:8px; align-items:center;">
+              <button id="import-playlist-btn" class="secondary-btn" title="Import M3U or M3U8 playlist file">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Import M3U</span>
+              </button>
+              <input type="file" id="playlist-file-import-input" accept=".m3u,.m3u8,.txt" style="display:none;">
               <button id="new-playlist-btn" class="primary-btn">
                 <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                <span>New Playlist</span>
+                <span>+ Custom Playlist</span>
               </button>
             </div>
           </div>
@@ -900,6 +950,14 @@
                     <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
                   </svg>
                   <span>Share</span>
+                </button>
+                <button id="detail-save-custom-btn" class="secondary-btn hidden" title="Save as a permanent custom playlist in your library">
+                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span>Save as Custom Playlist</span>
                 </button>
                 <button id="detail-add-songs-btn" class="secondary-btn hidden" title="Add songs to this playlist">
                   <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
@@ -1307,17 +1365,24 @@
     </div>
   </div>
 
-  <!-- Create Playlist Modal -->
+  <!-- Create / Add Custom Playlist Modal -->
   <div class="modal-overlay hidden" id="create-playlist-modal">
-    <div class="modal-card" style="max-width: 440px;">
+    <div class="modal-card" style="max-width: 480px;">
       <div class="modal-header">
-        <h3>Create New Playlist</h3>
+        <h3>Add & Create Custom Playlist</h3>
         <button id="create-playlist-modal-close" class="icon-btn">✕</button>
       </div>
-      <div class="modal-body" style="padding: 16px 0; display:flex; flex-direction:column; gap:14px;">
+      <div class="modal-tabs" style="margin-top: 10px;">
+        <button class="modal-tab-btn active" id="modal-tab-manual" data-tab="manual">✍️ Custom Manual</button>
+        <button class="modal-tab-btn" id="modal-tab-smart" data-tab="smart">⚡ Smart Auto-Mix</button>
+        <button class="modal-tab-btn" id="modal-tab-import" data-tab="import">📥 Import M3U</button>
+      </div>
+      
+      <!-- Panel 1: Manual Custom Playlist -->
+      <div class="modal-tab-panel" id="tab-panel-manual" style="padding: 10px 0; display:flex; flex-direction:column; gap:14px;">
         <div>
           <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Playlist Name</label>
-          <input type="text" id="new-playlist-name-input" placeholder="e.g. Chill Vibes, Workout, Top Favorites" style="width:100%; padding:10px 12px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border-subtle); color:var(--text-primary);">
+          <input type="text" id="new-playlist-name-input" placeholder="e.g. Chill Vibes, Telugu Melodies, Workout" style="width:100%; padding:10px 12px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border-subtle); color:var(--text-primary);">
         </div>
         <div>
           <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Description (Optional)</label>
@@ -1328,6 +1393,65 @@
           <button id="submit-create-playlist-btn" class="primary-btn">Create Playlist</button>
         </div>
       </div>
+
+      <!-- Panel 2: Smart Auto-Mix Builder -->
+      <div class="modal-tab-panel hidden" id="tab-panel-smart" style="padding: 10px 0; display:flex; flex-direction:column; gap:14px;">
+        <p style="font-size:0.82rem; color:var(--text-secondary); margin:0;">Pick metadata criteria below. The player will automatically assemble and maintain the playlist.</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div>
+            <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Era / Decade</label>
+            <select id="smart-era-select" style="width:100%; padding:8px 10px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border-subtle); color:var(--text-primary);">
+              <option value="">Any Era</option>
+              <option value="2020s">2020s</option>
+              <option value="2010s">2010s</option>
+              <option value="2000s">2000s</option>
+              <option value="1990s">1990s</option>
+              <option value="1980s">1980s</option>
+              <option value="Classic">Classic (&lt; 1980)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Language</label>
+            <select id="smart-lang-select" style="width:100%; padding:8px 10px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border-subtle); color:var(--text-primary);">
+              <option value="">Any Language</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Genre</label>
+          <select id="smart-genre-select" style="width:100%; padding:8px 10px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border-subtle); color:var(--text-primary);">
+            <option value="">Any Genre</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Generated Playlist Name</label>
+          <input type="text" id="smart-name-input" placeholder="e.g. 1990s TELUGU" style="width:100%; padding:10px 12px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border-subtle); color:var(--text-primary); font-weight:600;">
+        </div>
+        <div id="smart-match-counter" style="font-size:0.8rem; color:#818cf8; background:rgba(99,102,241,0.15); padding:8px 12px; border-radius:6px; border:1px solid rgba(99,102,241,0.3);">
+          ⚡ Found <strong id="smart-match-count">0</strong> matching tracks in library
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button id="cancel-smart-playlist-btn" class="secondary-btn">Cancel</button>
+          <button id="submit-smart-playlist-btn" class="primary-btn">Generate Playlist</button>
+        </div>
+      </div>
+
+      <!-- Panel 3: Import M3U -->
+      <div class="modal-tab-panel hidden" id="tab-panel-import" style="padding: 10px 0; display:flex; flex-direction:column; gap:14px;">
+        <p style="font-size:0.85rem; color:var(--text-secondary); margin:0;">Upload an <code>.m3u</code> or <code>.m3u8</code> playlist file from your device. Tracks will be automatically matched to your local media library.</p>
+        <div id="m3u-dropzone" style="border:2px dashed var(--border-subtle); border-radius:12px; padding:32px 20px; text-align:center; cursor:pointer; background:rgba(255,255,255,0.02); transition:all 0.2s ease;">
+          <div style="font-size:2.4rem; margin-bottom:8px;">📥</div>
+          <div style="font-weight:600; font-size:0.95rem;">Click to select or drag & drop M3U file</div>
+          <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">Supports .m3u, .m3u8, .txt</div>
+          <input type="file" id="modal-m3u-file-input" accept=".m3u,.m3u8,.txt" style="display:none;">
+        </div>
+        <div id="m3u-selected-file-label" class="hidden" style="font-size:0.85rem; color:#10b981; font-weight:600; text-align:center;"></div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button id="cancel-import-playlist-btn" class="secondary-btn">Cancel</button>
+          <button id="submit-import-playlist-btn" class="primary-btn" disabled>Import Playlist</button>
+        </div>
+      </div>
+
     </div>
   </div>
 

@@ -53,6 +53,10 @@ const state = {
   selectedYear: '',
   selectedDecade: '',
   currentPlaylist: null,
+  smartPlaylists: [],
+  activePlaylistTab: 'all',
+  activeRibbonFilter: 'all',
+  activeSubRibbon: null,
   selectedSongIds: new Set(),
   isBatchMode: false,
   playbackSpeed: 1.0,
@@ -206,6 +210,27 @@ const detailDownloadBtn = document.getElementById('detail-download-btn');
 const detailShareBtn = document.getElementById('detail-share-btn');
 const detailAddSongsBtn = document.getElementById('detail-add-songs-btn');
 const detailDeleteBtn = document.getElementById('detail-delete-btn');
+const detailSaveCustomBtn = document.getElementById('detail-save-custom-btn');
+
+// Quick Filter Ribbon & Smart Combo Elements
+const songQuickRibbon = document.getElementById('song-quick-ribbon');
+const subRibbonLanguages = document.getElementById('sub-ribbon-languages');
+const subRibbonEras = document.getElementById('sub-ribbon-eras');
+const subRibbonSmartMixes = document.getElementById('sub-ribbon-smart-mixes');
+const smartComboBanner = document.getElementById('smart-combo-banner');
+const smartComboTitle = document.getElementById('smart-combo-title');
+const smartComboSubtitle = document.getElementById('smart-combo-subtitle');
+const smartComboPlayBtn = document.getElementById('smart-combo-play-btn');
+const smartComboShuffleBtn = document.getElementById('smart-combo-shuffle-btn');
+const smartComboSaveBtn = document.getElementById('smart-combo-save-btn');
+const smartComboCloseBtn = document.getElementById('smart-combo-close-btn');
+
+// Playlists View Elements
+const importPlaylistBtn = document.getElementById('import-playlist-btn');
+const playlistFileImportInput = document.getElementById('playlist-file-import-input');
+const plTabAll = document.getElementById('pl-tab-all');
+const plTabSmart = document.getElementById('pl-tab-smart');
+const plTabCustom = document.getElementById('pl-tab-custom');
 
 // Genres, Languages & Years Elements
 const genresGridEl = document.getElementById('genres-grid');
@@ -499,6 +524,9 @@ async function fetchSongs(query = '', sortBy = 'title', scope = null, genre = nu
     state.allSongs = songs;
     state.filteredSongs = songs;
     renderSongList(state.filteredSongs, songListEl);
+    if (typeof updateSmartComboBanner === 'function') {
+      updateSmartComboBanner();
+    }
   } catch (err) {
     console.error('Error fetching songs:', err);
   }
@@ -797,10 +825,18 @@ async function fetchAlbums() {
 
 async function fetchPlaylists() {
   try {
-    const res = await apiFetch('/api/playlists');
-    const data = await res.json();
-    state.playlists = data.playlists;
-    renderPlaylists(state.playlists);
+    const [resCustom, resSmart] = await Promise.all([
+      apiFetch('/api/playlists'),
+      apiFetch('/api/playlists/smart')
+    ]);
+    const dataCustom = await resCustom.json();
+    const dataSmart = await resSmart.json();
+    state.playlists = dataCustom.playlists || [];
+    state.smartPlaylists = dataSmart.smart_playlists || [];
+    if (typeof populateSmartSubRibbon === 'function') {
+      populateSmartSubRibbon();
+    }
+    renderPlaylists();
   } catch (err) {
     console.error('Error fetching playlists:', err);
   }
@@ -2170,20 +2206,44 @@ function renderAlbums(albums) {
   });
 }
 
-function renderPlaylists(playlists) {
+function renderPlaylists(playlists = null) {
+  if (!playlistsGridEl) return;
   playlistsGridEl.innerHTML = '';
-  if (!playlists || playlists.length === 0) {
+
+  let list = playlists;
+  if (!list) {
+    if (state.activePlaylistTab === 'smart') {
+      list = state.smartPlaylists || [];
+    } else if (state.activePlaylistTab === 'custom') {
+      list = state.playlists || [];
+    } else {
+      list = [...(state.smartPlaylists || []), ...(state.playlists || [])];
+    }
+  }
+
+  if (!list || list.length === 0) {
+    let emptyMsg = 'No playlists created yet.';
+    let emptySub = 'Click "+ Custom Playlist" or generate a Smart Auto-Mix to get started.';
+    if (state.activePlaylistTab === 'smart') {
+      emptyMsg = 'No smart auto-mixes found.';
+      emptySub = 'Tag your songs with Eras, Languages, or Genres to automatically unlock dynamic mixes!';
+    } else if (state.activePlaylistTab === 'custom') {
+      emptyMsg = 'No custom playlists created yet.';
+      emptySub = 'Click "+ Custom Playlist" or "Import M3U" to curate your own playlists.';
+    }
     playlistsGridEl.innerHTML = `
       <div style="grid-column: 1/-1; padding: 40px; text-align: center; color: var(--text-muted);">
-        <p>No playlists created yet.</p>
-        <p style="font-size: 0.85rem; margin-top: 8px;">Click "+ New Playlist" to start curating your library.</p>
+        <p>${emptyMsg}</p>
+        <p style="font-size: 0.85rem; margin-top: 8px;">${emptySub}</p>
       </div>
     `;
     return;
   }
-  playlists.forEach(pl => {
+
+  list.forEach(pl => {
+    const isSmart = !!(pl.is_smart || (pl.id && pl.id.toString().startsWith('smart:')));
     const card = document.createElement('div');
-    card.className = 'media-card';
+    card.className = `media-card ${isSmart ? 'smart-mix-card' : ''}`;
 
     let coverHtml = '';
     if (pl.sample_covers && pl.sample_covers.length >= 4) {
@@ -2196,6 +2256,12 @@ function renderPlaylists(playlists) {
       coverHtml = `
         <div class="media-card-img">
           <img src="/api/cover/${pl.sample_covers[0]}" alt="" style="width:100%; height:100%; object-fit:cover;" loading="lazy">
+        </div>
+      `;
+    } else if (isSmart) {
+      coverHtml = `
+        <div class="media-card-img" style="display:flex; align-items:center; justify-content:center; background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(168,85,247,0.25)); border:1px solid rgba(99,102,241,0.3);">
+          <span style="font-size: 2.4rem;">⚡</span>
         </div>
       `;
     } else {
@@ -2214,8 +2280,10 @@ function renderPlaylists(playlists) {
     }
 
     const durationText = pl.total_duration ? ` • ${formatTime(pl.total_duration)}` : '';
+    const badgeHtml = isSmart ? `<span class="smart-mix-badge">⚡ AUTO MIX</span>` : '';
     card.innerHTML = `
       ${coverHtml}
+      ${badgeHtml}
       <span class="media-card-title">${escapeHtml(pl.name)}</span>
       <span class="media-card-subtitle">${pl.song_count || 0} tracks${durationText}</span>
     `;
@@ -2318,7 +2386,9 @@ async function openPlaylistDetail(playlist) {
     const res = await apiFetch(`/api/playlists/${playlist.id}/songs`);
     const data = await res.json();
     const songs = data.songs || [];
-    detailType.textContent = 'PLAYLIST';
+    const isSmart = !!(playlist.is_smart || (playlist.id && playlist.id.toString().startsWith('smart:')));
+
+    detailType.textContent = isSmart ? '⚡ SMART AUTO MIX' : 'PLAYLIST';
     detailTitle.textContent = playlist.name;
     const durText = playlist.total_duration ? ` • ${formatTime(playlist.total_duration)}` : '';
     detailSubtitle.textContent = `${playlist.description ? playlist.description + ' • ' : ''}${songs.length} tracks${durText}`;
@@ -2329,8 +2399,62 @@ async function openPlaylistDetail(playlist) {
       detailCoverImg.src = songs[0] ? getCoverUrl(songs[0]) : '/icon.svg';
     }
 
-    if (detailAddSongsBtn) detailAddSongsBtn.classList.remove('hidden');
-    if (detailDeleteBtn) detailDeleteBtn.classList.remove('hidden');
+    if (isSmart) {
+      if (detailSaveCustomBtn) {
+        detailSaveCustomBtn.classList.remove('hidden');
+        detailSaveCustomBtn.onclick = async () => {
+          try {
+            const saveName = prompt('Save this auto-mix as a permanent custom playlist:', playlist.name);
+            if (!saveName) return;
+            const sRes = await apiFetch('/api/playlists', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: saveName,
+                description: playlist.description || `Generated from ${playlist.name}`,
+                song_ids: songs.map(s => s.id)
+              })
+            });
+            if (sRes.ok) {
+              const resData = await sRes.json();
+              alert(`Saved "${saveName}" as a custom playlist!`);
+              await fetchPlaylists();
+              if (resData.playlist) openPlaylistDetail(resData.playlist);
+            } else {
+              const err = await sRes.json();
+              alert(err.detail || 'Failed to save playlist');
+            }
+          } catch (e) {
+            alert('Error saving custom playlist: ' + e);
+          }
+        };
+      }
+      if (detailAddSongsBtn) detailAddSongsBtn.classList.add('hidden');
+      if (detailDeleteBtn) detailDeleteBtn.classList.add('hidden');
+    } else {
+      if (detailSaveCustomBtn) detailSaveCustomBtn.classList.add('hidden');
+      if (detailAddSongsBtn) {
+        detailAddSongsBtn.classList.remove('hidden');
+        detailAddSongsBtn.onclick = () => openAddSongsToPlaylistModal(playlist);
+      }
+      if (detailDeleteBtn) {
+        detailDeleteBtn.classList.remove('hidden');
+        detailDeleteBtn.onclick = async () => {
+          if (confirm(`Delete playlist "${playlist.name}"? (Tracks in your library will be preserved)`)) {
+            try {
+              const dres = await apiFetch(`/api/playlists/${playlist.id}`, { method: 'DELETE' });
+              if (dres.ok) {
+                state.currentPlaylist = null;
+                await fetchPlaylists();
+                switchView('playlists');
+              }
+            } catch (e) {
+              alert('Failed to delete playlist: ' + e);
+            }
+          }
+        };
+      }
+    }
 
     detailPlayBtn.onclick = () => playFromList(songs, 0);
     detailShuffleBtn.onclick = () => playShuffledList(songs);
@@ -2343,21 +2467,6 @@ async function openPlaylistDetail(playlist) {
       document.body.removeChild(a);
     };
     detailShareBtn.onclick = () => openSharePlaylistModal(playlist);
-    detailAddSongsBtn.onclick = () => openAddSongsToPlaylistModal(playlist);
-    detailDeleteBtn.onclick = async () => {
-      if (confirm(`Delete playlist "${playlist.name}"? (Tracks in your library will be preserved)`)) {
-        try {
-          const dres = await apiFetch(`/api/playlists/${playlist.id}`, { method: 'DELETE' });
-          if (dres.ok) {
-            state.currentPlaylist = null;
-            await fetchPlaylists();
-            switchView('playlists');
-          }
-        } catch (e) {
-          alert('Failed to delete playlist: ' + e);
-        }
-      }
-    };
 
     renderSongList(songs, detailSongList, true);
     switchView('detail');
@@ -3841,7 +3950,7 @@ async function openAddToPlaylistModal(song) {
   playlistModal.classList.remove('hidden');
 }
 
-// Create Playlist Modal
+// Create Playlist Modal (Manual, Smart Auto-Mix & M3U Import)
 const createPlaylistModal = document.getElementById('create-playlist-modal');
 const createPlaylistModalClose = document.getElementById('create-playlist-modal-close');
 const cancelCreatePlaylistBtn = document.getElementById('cancel-create-playlist-btn');
@@ -3849,16 +3958,140 @@ const submitCreatePlaylistBtn = document.getElementById('submit-create-playlist-
 const newPlaylistNameInput = document.getElementById('new-playlist-name-input');
 const newPlaylistDescInput = document.getElementById('new-playlist-desc-input');
 
-function openCreatePlaylistModal() {
+// Smart Auto-Mix Panel Elements
+const smartEraSelect = document.getElementById('smart-era-select');
+const smartLangSelect = document.getElementById('smart-lang-select');
+const smartGenreSelect = document.getElementById('smart-genre-select');
+const smartNameInput = document.getElementById('smart-name-input');
+const smartMatchCount = document.getElementById('smart-match-count');
+const cancelSmartPlaylistBtn = document.getElementById('cancel-smart-playlist-btn');
+const submitSmartPlaylistBtn = document.getElementById('submit-smart-playlist-btn');
+
+// Import M3U Panel Elements
+const m3uDropzone = document.getElementById('m3u-dropzone');
+const modalM3uFileInput = document.getElementById('modal-m3u-file-input');
+const m3uSelectedFileLabel = document.getElementById('m3u-selected-file-label');
+const cancelImportPlaylistBtn = document.getElementById('cancel-import-playlist-btn');
+const submitImportPlaylistBtn = document.getElementById('submit-import-playlist-btn');
+
+let selectedM3UFile = null;
+
+function switchCreatePlaylistTab(tab) {
+  document.querySelectorAll('.modal-tabs .modal-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.querySelectorAll('.modal-tab-panel').forEach(panel => {
+    panel.classList.add('hidden');
+  });
+  const targetPanel = document.getElementById(`tab-panel-${tab}`);
+  if (targetPanel) targetPanel.classList.remove('hidden');
+
+  if (tab === 'smart') {
+    populateSmartBuilderDropdowns();
+    updateSmartMatchPreview();
+  }
+}
+
+document.querySelectorAll('.modal-tabs .modal-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    switchCreatePlaylistTab(btn.dataset.tab);
+  });
+});
+
+function openCreatePlaylistModal(initialTab = 'manual') {
   if (newPlaylistNameInput) newPlaylistNameInput.value = '';
   if (newPlaylistDescInput) newPlaylistDescInput.value = '';
+  selectedM3UFile = null;
+  if (m3uSelectedFileLabel) {
+    m3uSelectedFileLabel.textContent = '';
+    m3uSelectedFileLabel.classList.add('hidden');
+  }
+  if (submitImportPlaylistBtn) submitImportPlaylistBtn.disabled = true;
+
+  switchCreatePlaylistTab(initialTab);
   createPlaylistModal?.classList.remove('hidden');
-  newPlaylistNameInput?.focus();
+  if (initialTab === 'manual') newPlaylistNameInput?.focus();
 }
+
+function populateSmartBuilderDropdowns() {
+  if (smartLangSelect && smartLangSelect.options.length <= 1) {
+    smartLangSelect.innerHTML = '<option value="">Any Language</option>';
+    (state.languages || []).forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = l.language;
+      opt.textContent = `${l.language} (${l.count})`;
+      smartLangSelect.appendChild(opt);
+    });
+  }
+
+  if (smartGenreSelect && smartGenreSelect.options.length <= 1) {
+    genreOptPopulate: {
+      smartGenreSelect.innerHTML = '<option value="">Any Genre</option>';
+      (state.genres || []).forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = g.genre;
+        opt.textContent = `${g.genre} (${g.count})`;
+        smartGenreSelect.appendChild(opt);
+      });
+    }
+  }
+}
+
+function updateSmartMatchPreview() {
+  const era = smartEraSelect?.value || '';
+  const lang = smartLangSelect?.value || '';
+  const genre = smartGenreSelect?.value || '';
+
+  const eraStr = (era && era.endsWith('s')) ? era : (era ? era.toUpperCase() : '');
+  let title = '';
+  if (era && lang) {
+    title = `${eraStr} ${lang.toUpperCase()}`;
+  } else if (genre && lang) {
+    title = `${genre.toUpperCase()} ${lang.toUpperCase()}`;
+  } else if (genre && era) {
+    title = `${eraStr} ${genre.toUpperCase()}`;
+  } else if (era) {
+    title = `${eraStr} HITS`;
+  } else if (lang) {
+    title = `${lang.toUpperCase()} HITS`;
+  } else if (genre) {
+    title = `${genre.toUpperCase()} HITS`;
+  } else {
+    title = 'SMART AUTO-MIX';
+  }
+
+  if (smartNameInput) smartNameInput.value = title;
+
+  if (smartMatchCount && state.allSongs) {
+    const matches = state.allSongs.filter(s => {
+      if (genre && (s.genre || '').toLowerCase() !== genre.toLowerCase()) return false;
+      if (lang && (s.language || '').toLowerCase() !== lang.toLowerCase()) return false;
+      if (era) {
+        const y = parseInt(s.year, 10);
+        if (!y) return false;
+        if (era === '2020s' && (y < 2020 || y > 2029)) return false;
+        if (era === '2010s' && (y < 2010 || y > 2019)) return false;
+        if (era === '2000s' && (y < 2000 || y > 2009)) return false;
+        if (era === '1990s' && (y < 1990 || y > 1999)) return false;
+        if (era === '1980s' && (y < 1980 || y > 1989)) return false;
+        if (era === 'Classic' && y >= 1980) return false;
+      }
+      return true;
+    });
+    smartMatchCount.textContent = matches.length;
+  }
+}
+
+if (smartEraSelect) smartEraSelect.addEventListener('change', updateSmartMatchPreview);
+if (smartLangSelect) smartLangSelect.addEventListener('change', updateSmartMatchPreview);
+if (smartGenreSelect) smartGenreSelect.addEventListener('change', updateSmartMatchPreview);
 
 if (createPlaylistModalClose) createPlaylistModalClose.addEventListener('click', () => createPlaylistModal?.classList.add('hidden'));
 if (cancelCreatePlaylistBtn) cancelCreatePlaylistBtn.addEventListener('click', () => createPlaylistModal?.classList.add('hidden'));
+if (cancelSmartPlaylistBtn) cancelSmartPlaylistBtn.addEventListener('click', () => createPlaylistModal?.classList.add('hidden'));
+if (cancelImportPlaylistBtn) cancelImportPlaylistBtn.addEventListener('click', () => createPlaylistModal?.classList.add('hidden'));
 
+// Panel 1: Submit Manual Playlist
 if (submitCreatePlaylistBtn) {
   submitCreatePlaylistBtn.addEventListener('click', async () => {
     const name = newPlaylistNameInput?.value.trim();
@@ -3886,11 +4119,165 @@ if (submitCreatePlaylistBtn) {
   });
 }
 
+// Panel 2: Submit Smart Auto-Mix
+if (submitSmartPlaylistBtn) {
+  submitSmartPlaylistBtn.addEventListener('click', async () => {
+    const era = smartEraSelect?.value || '';
+    const lang = smartLangSelect?.value || '';
+    const genre = smartGenreSelect?.value || '';
+    const name = smartNameInput?.value.trim();
+    if (!name) {
+      alert('Please enter a playlist name.');
+      return;
+    }
+    try {
+      const res = await apiFetch('/api/playlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          description: `Smart Auto-Mix [${[era, lang, genre].filter(Boolean).join(', ')}]`,
+          is_smart: true,
+          criteria: {
+            decade: era || undefined,
+            language: lang || undefined,
+            genre: genre || undefined
+          }
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        createPlaylistModal?.classList.add('hidden');
+        await fetchPlaylists();
+        if (data.playlist) openPlaylistDetail(data.playlist);
+      } else {
+        const err = await res.json();
+        alert(err.detail || 'Failed to create smart playlist');
+      }
+    } catch (e) {
+      alert('Error creating smart playlist: ' + e);
+    }
+  });
+}
+
+// Panel 3: Import M3U
+async function uploadAndImportM3U(file) {
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await apiFetch('/api/playlists/import', {
+      method: 'POST',
+      body: formData
+    });
+    if (res.ok) {
+      const data = await res.json();
+      alert(`Successfully imported playlist "${data.name}"! Matched ${data.matched_tracks} of ${data.total_tracks} tracks.`);
+      createPlaylistModal?.classList.add('hidden');
+      await fetchPlaylists();
+      if (data.playlist_id) {
+        const pl = state.playlists.find(p => p.id === data.playlist_id) || { id: data.playlist_id, name: data.name };
+        openPlaylistDetail(pl);
+      }
+    } else {
+      const err = await res.json();
+      alert(err.detail || 'Failed to import playlist');
+    }
+  } catch (e) {
+    alert('Error importing playlist: ' + e);
+  }
+}
+
+if (m3uDropzone) {
+  m3uDropzone.addEventListener('click', () => modalM3uFileInput?.click());
+  m3uDropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    m3uDropzone.style.borderColor = 'var(--accent)';
+    m3uDropzone.style.background = 'rgba(99, 102, 241, 0.08)';
+  });
+  m3uDropzone.addEventListener('dragleave', () => {
+    m3uDropzone.style.borderColor = 'var(--border-subtle)';
+    m3uDropzone.style.background = 'rgba(255, 255, 255, 0.02)';
+  });
+  m3uDropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    m3uDropzone.style.borderColor = 'var(--border-subtle)';
+    m3uDropzone.style.background = 'rgba(255, 255, 255, 0.02)';
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      selectedM3UFile = e.dataTransfer.files[0];
+      if (m3uSelectedFileLabel) {
+        m3uSelectedFileLabel.textContent = `Selected: ${selectedM3UFile.name}`;
+        m3uSelectedFileLabel.classList.remove('hidden');
+      }
+      if (submitImportPlaylistBtn) submitImportPlaylistBtn.disabled = false;
+    }
+  });
+}
+
+if (modalM3uFileInput) {
+  modalM3uFileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      selectedM3UFile = e.target.files[0];
+      if (m3uSelectedFileLabel) {
+        m3uSelectedFileLabel.textContent = `Selected: ${selectedM3UFile.name}`;
+        m3uSelectedFileLabel.classList.remove('hidden');
+      }
+      if (submitImportPlaylistBtn) submitImportPlaylistBtn.disabled = false;
+    }
+  });
+}
+
+if (submitImportPlaylistBtn) {
+  submitImportPlaylistBtn.addEventListener('click', () => {
+    if (selectedM3UFile) uploadAndImportM3U(selectedM3UFile);
+  });
+}
+
+// View-Playlists Header Controls
+if (importPlaylistBtn) {
+  importPlaylistBtn.addEventListener('click', () => {
+    openCreatePlaylistModal('import');
+  });
+}
+
+if (playlistFileImportInput) {
+  playlistFileImportInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      uploadAndImportM3U(e.target.files[0]);
+    }
+  });
+}
+
+if (plTabAll) {
+  plTabAll.addEventListener('click', () => {
+    state.activePlaylistTab = 'all';
+    document.querySelectorAll('.playlist-tabs-bar .filter-pill').forEach(p => p.classList.remove('active'));
+    plTabAll.classList.add('active');
+    renderPlaylists();
+  });
+}
+if (plTabSmart) {
+  plTabSmart.addEventListener('click', () => {
+    state.activePlaylistTab = 'smart';
+    document.querySelectorAll('.playlist-tabs-bar .filter-pill').forEach(p => p.classList.remove('active'));
+    plTabSmart.classList.add('active');
+    renderPlaylists();
+  });
+}
+if (plTabCustom) {
+  plTabCustom.addEventListener('click', () => {
+    state.activePlaylistTab = 'custom';
+    document.querySelectorAll('.playlist-tabs-bar .filter-pill').forEach(p => p.classList.remove('active'));
+    plTabCustom.classList.add('active');
+    renderPlaylists();
+  });
+}
+
 const newPlaylistBtn = document.getElementById('new-playlist-btn');
 if (newPlaylistBtn) {
   newPlaylistBtn.addEventListener('click', (e) => {
     e.preventDefault();
-    openCreatePlaylistModal();
+    openCreatePlaylistModal('manual');
   });
 }
 
@@ -4479,8 +4866,273 @@ if (clearMusicFiltersBtn) {
     if (filterLanguageSelect) filterLanguageSelect.value = '';
     if (filterYearSelect) filterYearSelect.value = '';
     clearMusicFiltersBtn.classList.add('hidden');
+    smartComboBanner?.classList.add('hidden');
+    document.querySelectorAll('#song-quick-ribbon .ribbon-chip').forEach(c => {
+      c.classList.toggle('active', c.dataset.ribbon === 'all');
+    });
+    document.querySelectorAll('.sub-ribbon').forEach(sr => sr.classList.add('hidden'));
     fetchSongs(searchInput.value.trim(), sortSelect.value);
   });
+}
+
+// --- Quick Category Ribbon & Active Smart Combo Banner ---
+function initQuickCategoryRibbon() {
+  const chips = document.querySelectorAll('#song-quick-ribbon .ribbon-chip');
+  if (!chips || chips.length === 0) return;
+
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      const type = chip.dataset.ribbon;
+
+      if (type === 'all') {
+        chips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        state.selectedGenre = '';
+        state.selectedLanguage = '';
+        state.selectedDecade = '';
+        state.selectedYear = '';
+        if (filterGenreSelect) filterGenreSelect.value = '';
+        if (filterLanguageSelect) filterLanguageSelect.value = '';
+        if (filterYearSelect) filterYearSelect.value = '';
+        document.querySelectorAll('.sub-ribbon').forEach(sr => sr.classList.add('hidden'));
+        fetchSongs(searchInput ? searchInput.value.trim() : '', sortSelect ? sortSelect.value : 'title');
+      } else if (type === 'albums') {
+        switchView('albums');
+      } else if (type === 'artists') {
+        switchView('artists');
+      } else if (type === 'devotional') {
+        chips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        state.selectedGenre = 'Devotional';
+        if (filterGenreSelect) filterGenreSelect.value = 'Devotional';
+        document.querySelectorAll('.sub-ribbon').forEach(sr => sr.classList.add('hidden'));
+        fetchSongs(searchInput ? searchInput.value.trim() : '', sortSelect ? sortSelect.value : 'title');
+      } else if (type === 'languages-menu') {
+        const isCurrentlyHidden = subRibbonLanguages?.classList.contains('hidden');
+        document.querySelectorAll('.sub-ribbon').forEach(sr => sr.classList.add('hidden'));
+        if (isCurrentlyHidden) {
+          chips.forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          populateLanguagesSubRibbon();
+          subRibbonLanguages?.classList.remove('hidden');
+        } else {
+          chip.classList.remove('active');
+          const allChip = document.querySelector('#song-quick-ribbon [data-ribbon="all"]');
+          if (allChip && !state.selectedGenre && !state.selectedLanguage && !state.selectedDecade) {
+            allChip.classList.add('active');
+          }
+        }
+      } else if (type === 'eras-menu') {
+        const isCurrentlyHidden = subRibbonEras?.classList.contains('hidden');
+        document.querySelectorAll('.sub-ribbon').forEach(sr => sr.classList.add('hidden'));
+        if (isCurrentlyHidden) {
+          chips.forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          populateErasSubRibbon();
+          subRibbonEras?.classList.remove('hidden');
+        } else {
+          chip.classList.remove('active');
+          const allChip = document.querySelector('#song-quick-ribbon [data-ribbon="all"]');
+          if (allChip && !state.selectedGenre && !state.selectedLanguage && !state.selectedDecade) {
+            allChip.classList.add('active');
+          }
+        }
+      } else if (type === 'smart-mixes-menu') {
+        const isCurrentlyHidden = subRibbonSmartMixes?.classList.contains('hidden');
+        document.querySelectorAll('.sub-ribbon').forEach(sr => sr.classList.add('hidden'));
+        if (isCurrentlyHidden) {
+          chips.forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          populateSmartSubRibbon();
+          subRibbonSmartMixes?.classList.remove('hidden');
+        } else {
+          chip.classList.remove('active');
+          const allChip = document.querySelector('#song-quick-ribbon [data-ribbon="all"]');
+          if (allChip && !state.selectedGenre && !state.selectedLanguage && !state.selectedDecade) {
+            allChip.classList.add('active');
+          }
+        }
+      }
+    });
+  });
+}
+
+function populateLanguagesSubRibbon() {
+  if (!subRibbonLanguages) return;
+  subRibbonLanguages.innerHTML = '';
+  if (!state.languages || state.languages.length === 0) {
+    subRibbonLanguages.innerHTML = `<span style="font-size:0.78rem; color:var(--text-muted); padding:4px 8px;">No language tags found in songs yet.</span>`;
+    return;
+  }
+  state.languages.forEach(l => {
+    const btn = document.createElement('button');
+    btn.className = `sub-chip ${state.selectedLanguage === l.language ? 'active' : ''}`;
+    btn.textContent = `${l.language} (${l.count})`;
+    btn.onclick = () => {
+      if (state.selectedLanguage === l.language) {
+        state.selectedLanguage = '';
+        btn.classList.remove('active');
+        if (filterLanguageSelect) filterLanguageSelect.value = '';
+      } else {
+        state.selectedLanguage = l.language;
+        subRibbonLanguages.querySelectorAll('.sub-chip').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        if (filterLanguageSelect) filterLanguageSelect.value = l.language;
+      }
+      fetchSongs(searchInput ? searchInput.value.trim() : '', sortSelect ? sortSelect.value : 'title');
+    };
+    subRibbonLanguages.appendChild(btn);
+  });
+}
+
+function populateErasSubRibbon() {
+  if (!subRibbonEras) return;
+  subRibbonEras.innerHTML = '';
+  const ERAS = [
+    { label: '2020s', value: '2020s' },
+    { label: '2010s', value: '2010s' },
+    { label: '2000s', value: '2000s' },
+    { label: '1990s', value: '1990s' },
+    { label: '1980s', value: '1980s' },
+    { label: 'Classic (< 1980)', value: 'Classic' }
+  ];
+  ERAS.forEach(era => {
+    const btn = document.createElement('button');
+    btn.className = `sub-chip ${state.selectedDecade === era.value ? 'active' : ''}`;
+    btn.textContent = era.label;
+    btn.onclick = () => {
+      if (state.selectedDecade === era.value) {
+        state.selectedDecade = '';
+        btn.classList.remove('active');
+      } else {
+        state.selectedDecade = era.value;
+        subRibbonEras.querySelectorAll('.sub-chip').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      fetchSongs(searchInput ? searchInput.value.trim() : '', sortSelect ? sortSelect.value : 'title');
+    };
+    subRibbonEras.appendChild(btn);
+  });
+}
+
+function populateSmartSubRibbon() {
+  if (!subRibbonSmartMixes) return;
+  subRibbonSmartMixes.innerHTML = '';
+  if (!state.smartPlaylists || state.smartPlaylists.length === 0) {
+    subRibbonSmartMixes.innerHTML = `<span style="font-size:0.78rem; color:var(--text-muted); padding:4px 8px;">No smart auto-mixes yet. Tag your library with Eras & Languages!</span>`;
+    return;
+  }
+  state.smartPlaylists.slice(0, 10).forEach(sm => {
+    const btn = document.createElement('button');
+    btn.className = 'sub-chip';
+    btn.innerHTML = `⚡ ${escapeHtml(sm.name)} <span style="opacity:0.7; font-size:0.75rem;">(${sm.song_count})</span>`;
+    btn.onclick = () => openPlaylistDetail(sm);
+    subRibbonSmartMixes.appendChild(btn);
+  });
+}
+
+function updateSmartComboBanner() {
+  if (!smartComboBanner) return;
+
+  const genre = state.selectedGenre;
+  const lang = state.selectedLanguage;
+  const decade = state.selectedDecade;
+  const year = state.selectedYear;
+
+  const isComboActive = !!(decade || lang || genre || year);
+
+  if (!isComboActive || !state.filteredSongs || state.filteredSongs.length === 0) {
+    smartComboBanner.classList.add('hidden');
+    return;
+  }
+
+  const eraStr = (decade && decade.endsWith('s')) ? decade : (decade ? decade.toUpperCase() : '');
+  let title = '';
+  if (decade && lang) {
+    title = `${eraStr} ${lang.toUpperCase()}`;
+  } else if (genre && lang) {
+    title = `${genre.toUpperCase()} ${lang.toUpperCase()}`;
+  } else if (genre && decade) {
+    title = `${eraStr} ${genre.toUpperCase()}`;
+  } else if (year && lang) {
+    title = `${year} ${lang.toUpperCase()}`;
+  } else if (genre) {
+    title = `${genre.toUpperCase()} HITS`;
+  } else if (lang) {
+    title = `${lang.toUpperCase()} HITS`;
+  } else if (decade) {
+    title = `${eraStr} HITS`;
+  } else if (year) {
+    title = `${year} HITS`;
+  } else {
+    title = 'SMART AUTO-MIX';
+  }
+
+  const count = state.filteredSongs.length;
+  const totalSec = state.filteredSongs.reduce((acc, s) => acc + (s.duration || 0), 0);
+  const durStr = formatTime(totalSec);
+
+  if (smartComboTitle) smartComboTitle.textContent = title;
+  if (smartComboSubtitle) smartComboSubtitle.textContent = `${count} tracks • ${durStr}`;
+
+  if (smartComboPlayBtn) {
+    smartComboPlayBtn.onclick = () => playFromList(state.filteredSongs, 0);
+  }
+  if (smartComboShuffleBtn) {
+    smartComboShuffleBtn.onclick = () => playShuffledList(state.filteredSongs);
+  }
+  if (smartComboSaveBtn) {
+    smartComboSaveBtn.onclick = async () => {
+      try {
+        const name = prompt('Save this auto-mix as a permanent custom playlist:', title);
+        if (!name) return;
+        const res = await apiFetch('/api/playlists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            description: `Smart mix for ${title}`,
+            is_smart: true,
+            criteria: {
+              decade: decade || undefined,
+              language: lang || undefined,
+              genre: genre || undefined,
+              year: year ? parseInt(year, 10) : undefined
+            },
+            song_ids: state.filteredSongs.map(s => s.id)
+          })
+        });
+        if (res.ok) {
+          alert(`Saved custom playlist "${name}"!`);
+          await fetchPlaylists();
+        } else {
+          const err = await res.json();
+          alert(err.detail || 'Failed to save playlist');
+        }
+      } catch (e) {
+        alert('Error saving playlist: ' + e);
+      }
+    };
+  }
+  if (smartComboCloseBtn) {
+    smartComboCloseBtn.onclick = () => {
+      state.selectedGenre = '';
+      state.selectedLanguage = '';
+      state.selectedDecade = '';
+      state.selectedYear = '';
+      if (filterGenreSelect) filterGenreSelect.value = '';
+      if (filterLanguageSelect) filterLanguageSelect.value = '';
+      if (filterYearSelect) filterYearSelect.value = '';
+      smartComboBanner.classList.add('hidden');
+      document.querySelectorAll('#song-quick-ribbon .ribbon-chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.ribbon === 'all');
+      });
+      document.querySelectorAll('.sub-ribbon').forEach(sr => sr.classList.add('hidden'));
+      fetchSongs(searchInput ? searchInput.value.trim() : '', sortSelect ? sortSelect.value : 'title');
+    };
+  }
+
+  smartComboBanner.classList.remove('hidden');
 }
 
 // Edit Metadata Modal Logic (Jellyfin-Style Fast Organizer with Language)
@@ -5313,6 +5965,11 @@ document.addEventListener('keydown', (e) => {
 // Initial Load & Mobile-First Routing
 const isMobileDevice = /android|iphone|ipad|ipod/i.test(navigator.userAgent) || window.innerWidth <= 768;
 const startingView = isMobileDevice ? 'my-device' : 'songs';
+
+initQuickCategoryRibbon();
+fetchLanguages();
+fetchGenres();
+fetchPlaylists();
 
 fetchStatus();
 if (startingView === 'my-device') {

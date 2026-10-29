@@ -1,6 +1,9 @@
 import sqlite3
 import uuid
 import datetime
+import json
+import re
+import pathlib
 from typing import List, Optional, Dict, Any
 from config import DB_PATH
 
@@ -82,6 +85,10 @@ def init_db():
         pl_cols = {col["name"] for col in cursor.fetchall()}
         if "description" not in pl_cols:
             cursor.execute("ALTER TABLE playlists ADD COLUMN description TEXT DEFAULT ''")
+        if "is_smart" not in pl_cols:
+            cursor.execute("ALTER TABLE playlists ADD COLUMN is_smart INTEGER DEFAULT 0")
+        if "rules" not in pl_cols:
+            cursor.execute("ALTER TABLE playlists ADD COLUMN rules TEXT DEFAULT ''")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS playlist_songs (
@@ -423,8 +430,10 @@ def get_songs(
                 sql += " AND songs.year >= 2000 AND songs.year < 2010"
             elif decade == "1990s":
                 sql += " AND songs.year >= 1990 AND songs.year < 2000"
-            elif decade == "classic":
-                sql += " AND songs.year < 1990 AND songs.year IS NOT NULL"
+            elif decade == "1980s":
+                sql += " AND songs.year >= 1980 AND songs.year < 1990"
+            elif decade.lower() in ["classic", "classics"]:
+                sql += " AND songs.year < 1980 AND songs.year IS NOT NULL"
 
         if resolution:
             sql += " AND songs.resolution LIKE ?"
@@ -655,11 +664,57 @@ def get_years(media_type: str = "audio") -> Dict[str, Any]:
         return {"years": years_list, "decades": decades}
 
 # --- Playlists ---
-def create_playlist(name: str, description: str = "") -> str:
+def parse_smart_id_criteria(smart_id: str) -> Optional[Dict[str, Any]]:
+    if not smart_id or not smart_id.startswith("smart:"):
+        return None
+    parts = smart_id.split(":")
+    if len(parts) >= 3:
+        stype = parts[1]
+        if stype == "era-lang" and len(parts) >= 4:
+            return {"decade": parts[2], "language": parts[3]}
+        elif stype == "genre-lang" and len(parts) >= 4:
+            return {"genre": parts[2], "language": parts[3]}
+        elif stype == "era-genre" and len(parts) >= 4:
+            return {"decade": parts[2], "genre": parts[3]}
+        elif stype == "genre":
+            return {"genre": parts[2]}
+        elif stype == "era":
+            return {"decade": parts[2]}
+        elif stype == "lang":
+            return {"language": parts[2]}
+    return None
+
+def criteria_to_title(criteria: Dict[str, Any]) -> str:
+    dec = criteria.get("decade")
+    lang = criteria.get("language")
+    genre = criteria.get("genre")
+    
+    parts = []
+    if dec:
+        d_str = str(dec)
+        if d_str.lower().endswith("s") and d_str[:-1].isdigit():
+            parts.append(d_str[:-1] + "s")
+        else:
+            parts.append(d_str.upper())
+    if genre:
+        parts.append(str(genre).upper())
+    if lang:
+        parts.append(str(lang).upper())
+    
+    if not parts:
+        return "SMART MIX"
+    if len(parts) == 1:
+        return f"{parts[0]} HITS"
+    return " ".join(parts)
+
+def create_playlist(name: str, description: str = "", is_smart: bool = False, rules: str = "") -> str:
     pid = str(uuid.uuid4())
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO playlists (id, name, description) VALUES (?, ?, ?)", (pid, name.strip(), description.strip()))
+        cursor.execute(
+            "INSERT INTO playlists (id, name, description, is_smart, rules) VALUES (?, ?, ?, ?, ?)",
+            (pid, name.strip(), description.strip(), 1 if is_smart else 0, rules.strip())
+        )
         conn.commit()
     return pid
 
@@ -667,7 +722,9 @@ def get_playlists() -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT p.id, p.name, COALESCE(p.description, '') AS description, p.created_at, 
+            SELECT p.id, p.name, COALESCE(p.description, '') AS description,
+                   COALESCE(p.is_smart, 0) AS is_smart, COALESCE(p.rules, '') AS rules,
+                   p.created_at, 
                    COUNT(ps.song_id) as song_count,
                    COALESCE(SUM(s.duration), 0) as total_duration
             FROM playlists p
@@ -691,10 +748,30 @@ def get_playlists() -> List[Dict[str, Any]]:
         return playlists
 
 def get_playlist(playlist_id: str) -> Optional[Dict[str, Any]]:
+    if playlist_id and playlist_id.startswith("smart:"):
+        criteria = parse_smart_id_criteria(playlist_id)
+        if not criteria:
+            return None
+        songs = get_songs(genre=criteria.get("genre"), language=criteria.get("language"), decade=criteria.get("decade"))
+        name = criteria_to_title(criteria)
+        return {
+            "id": playlist_id,
+            "name": name,
+            "description": f"Auto-generated smart collection for {name}",
+            "is_smart": 1,
+            "rules": json.dumps(criteria),
+            "created_at": None,
+            "song_count": len(songs),
+            "total_duration": sum(s.get("duration", 0) for s in songs),
+            "sample_covers": [s["cover_hash"] for s in songs if s.get("cover_hash")][:4]
+        }
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT p.id, p.name, COALESCE(p.description, '') AS description, p.created_at,
+            SELECT p.id, p.name, COALESCE(p.description, '') AS description,
+                   COALESCE(p.is_smart, 0) AS is_smart, COALESCE(p.rules, '') AS rules,
+                   p.created_at,
                    COUNT(ps.song_id) as song_count,
                    COALESCE(SUM(s.duration), 0) as total_duration
             FROM playlists p
@@ -737,6 +814,12 @@ def update_playlist(playlist_id: str, name: Optional[str] = None, description: O
         return cursor.rowcount > 0
 
 def get_playlist_songs(playlist_id: str) -> List[Dict[str, Any]]:
+    if playlist_id and playlist_id.startswith("smart:"):
+        criteria = parse_smart_id_criteria(playlist_id)
+        if not criteria:
+            return []
+        return get_songs(genre=criteria.get("genre"), language=criteria.get("language"), decade=criteria.get("decade"))
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -746,6 +829,228 @@ def get_playlist_songs(playlist_id: str) -> List[Dict[str, Any]]:
             ORDER BY ps.position ASC
         """, (playlist_id,))
         return [dict(row) for row in cursor.fetchall()]
+
+def get_auto_generated_playlists(media_type: str = "audio") -> List[Dict[str, Any]]:
+    """
+    Intelligently generates dynamic smart groups from media library metadata:
+    - Era + Language: e.g. "1990s TELUGU", "2000s HINDI", "2010s ENGLISH"
+    - Genre + Language: e.g. "DEVOTIONAL TELUGU", "BOLLYWOOD HINDI"
+    - Genre: e.g. "DEVOTIONAL", "CLASSICAL", "POP", "ROCK"
+    - Era: e.g. "1990s HITS", "2000s ERA"
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, year, genre, language, duration, cover_hash
+            FROM songs
+            WHERE media_type = ?
+        """, (media_type,))
+        rows = cursor.fetchall()
+
+    from collections import defaultdict
+
+    def get_decade_str(year):
+        if not year or year <= 0:
+            return None
+        if year >= 2020:
+            return "2020s"
+        elif year >= 2010:
+            return "2010s"
+        elif year >= 2000:
+            return "2000s"
+        elif year >= 1990:
+            return "1990s"
+        elif year >= 1980:
+            return "1980s"
+        elif year >= 1970:
+            return "1970s"
+        else:
+            return "Classic"
+
+    era_lang_groups = defaultdict(list)
+    genre_lang_groups = defaultdict(list)
+    genre_groups = defaultdict(list)
+    era_groups = defaultdict(list)
+    lang_groups = defaultdict(list)
+
+    for r in rows:
+        sid = r["id"]
+        year = r["year"]
+        genre = (r["genre"] or "").strip()
+        lang = (r["language"] or "").strip()
+        dur = r["duration"] or 0
+        cov = r["cover_hash"]
+
+        decade = get_decade_str(year)
+        is_valid_lang = lang and lang.lower() not in ["unknown", "none", ""]
+        is_valid_genre = genre and genre.lower() not in ["unknown", "none", "music", "entertainment", ""]
+
+        if decade and is_valid_lang:
+            era_lang_groups[(decade, lang)].append((sid, dur, cov))
+        if is_valid_genre and is_valid_lang:
+            genre_lang_groups[(genre, lang)].append((sid, dur, cov))
+        if is_valid_genre:
+            genre_groups[genre].append((sid, dur, cov))
+        if decade:
+            era_groups[decade].append((sid, dur, cov))
+        if is_valid_lang:
+            lang_groups[lang].append((sid, dur, cov))
+
+    smart_playlists = []
+
+    # 1. Era + Language (e.g. 1990s TELUGU)
+    for (dec, l), items in era_lang_groups.items():
+        name = f"{dec.upper()} {l.upper()}"
+        covers = [it[2] for it in items if it[2]][:4]
+        smart_playlists.append({
+            "id": f"smart:era-lang:{dec}:{l}",
+            "name": name,
+            "description": f"Auto-generated collection of {dec} tracks in {l}",
+            "category": "Era & Language",
+            "criteria": {"decade": dec, "language": l},
+            "song_count": len(items),
+            "total_duration": sum(it[1] for it in items),
+            "sample_covers": covers,
+            "is_smart": True
+        })
+
+    # 2. Genre + Language (e.g. DEVOTIONAL TELUGU)
+    for (g, l), items in genre_lang_groups.items():
+        name = f"{g.upper()} {l.upper()}"
+        covers = [it[2] for it in items if it[2]][:4]
+        smart_playlists.append({
+            "id": f"smart:genre-lang:{g}:{l}",
+            "name": name,
+            "description": f"Auto-generated {g} tracks in {l}",
+            "category": "Genre & Language",
+            "criteria": {"genre": g, "language": l},
+            "song_count": len(items),
+            "total_duration": sum(it[1] for it in items),
+            "sample_covers": covers,
+            "is_smart": True
+        })
+
+    # 3. Genre clusters (e.g. DEVOTIONAL)
+    for g, items in genre_groups.items():
+        name = f"{g.upper()} HITS" if not g.upper().endswith("HITS") else g.upper()
+        covers = [it[2] for it in items if it[2]][:4]
+        smart_playlists.append({
+            "id": f"smart:genre:{g}",
+            "name": name,
+            "description": f"Auto-generated {g} collection",
+            "category": "Genre",
+            "criteria": {"genre": g},
+            "song_count": len(items),
+            "total_duration": sum(it[1] for it in items),
+            "sample_covers": covers,
+            "is_smart": True
+        })
+
+    # 4. Era clusters (e.g. 1990s HITS)
+    for dec, items in era_groups.items():
+        name = f"{dec.upper()} HITS"
+        covers = [it[2] for it in items if it[2]][:4]
+        smart_playlists.append({
+            "id": f"smart:era:{dec}",
+            "name": name,
+            "description": f"Auto-generated {dec} collection",
+            "category": "Era",
+            "criteria": {"decade": dec},
+            "song_count": len(items),
+            "total_duration": sum(it[1] for it in items),
+            "sample_covers": covers,
+            "is_smart": True
+        })
+
+    # 5. Language clusters (e.g. TELUGU HITS)
+    for l, items in lang_groups.items():
+        name = f"{l.upper()} HITS"
+        covers = [it[2] for it in items if it[2]][:4]
+        smart_playlists.append({
+            "id": f"smart:lang:{l}",
+            "name": name,
+            "description": f"Auto-generated {l} songs collection",
+            "category": "Language",
+            "criteria": {"language": l},
+            "song_count": len(items),
+            "total_duration": sum(it[1] for it in items),
+            "sample_covers": covers,
+            "is_smart": True
+        })
+
+    def sort_key(p):
+        cat_priority = {
+            "Era & Language": 0,
+            "Genre & Language": 1,
+            "Genre": 2,
+            "Era": 3,
+            "Language": 4
+        }.get(p["category"], 5)
+        return (cat_priority, -p["song_count"])
+
+    smart_playlists.sort(key=sort_key)
+    return smart_playlists
+
+def import_playlist_m3u(file_content: str, filename: str = "Imported Playlist") -> Dict[str, Any]:
+    lines = [line.strip() for line in file_content.splitlines() if line.strip()]
+    pl_name = pathlib.Path(filename).stem or "Imported Playlist"
+
+    for line in lines:
+        if line.startswith("#PLAYLIST:"):
+            custom_title = line.split(":", 1)[1].strip()
+            if custom_title:
+                pl_name = custom_title
+                break
+
+    matched_song_ids = []
+    total_entries = 0
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        for line in lines:
+            if line.startswith("#"):
+                continue
+
+            total_entries += 1
+            # Check stream URL e.g. /api/stream/{id}
+            stream_match = re.search(r'/api/stream/([a-zA-Z0-9_\-]+)', line)
+            if stream_match:
+                sid = stream_match.group(1)
+                cursor.execute("SELECT id FROM songs WHERE id = ?", (sid,))
+                row = cursor.fetchone()
+                if row and row["id"] not in matched_song_ids:
+                    matched_song_ids.append(row["id"])
+                    continue
+
+            entry_path = pathlib.PurePath(line)
+            entry_name = entry_path.name
+            entry_stem = entry_path.stem
+
+            # Exact path or basename match
+            cursor.execute("SELECT id FROM songs WHERE path = ? OR path LIKE ?", (line, f"%{entry_name}"))
+            row = cursor.fetchone()
+            if row and row["id"] not in matched_song_ids:
+                matched_song_ids.append(row["id"])
+                continue
+
+            # Title or stem match
+            cursor.execute("SELECT id FROM songs WHERE title LIKE ? OR path LIKE ?", (f"%{entry_stem}%", f"%{entry_stem}%"))
+            row = cursor.fetchone()
+            if row and row["id"] not in matched_song_ids:
+                matched_song_ids.append(row["id"])
+
+    pid = create_playlist(pl_name, f"Imported from {filename} ({len(matched_song_ids)} tracks)")
+    if matched_song_ids:
+        add_songs_to_playlist(pid, matched_song_ids)
+
+    return {
+        "id": pid,
+        "playlist_id": pid,
+        "name": pl_name,
+        "matched_tracks": len(matched_song_ids),
+        "total_tracks": total_entries,
+        "total_entries": total_entries
+    }
 
 def add_song_to_playlist(playlist_id: str, song_id: str):
     with get_db_connection() as conn:

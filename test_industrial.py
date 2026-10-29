@@ -117,5 +117,86 @@ class TestIndustrialPlayer(unittest.TestCase):
         res = self.client.delete(f"/api/playlists/{pl_id}")
         self.assertEqual(res.status_code, 200)
 
+    def test_smart_playlists_and_combinations(self):
+        songs = self.client.get("/api/songs").json().get("songs", [])
+        self.assertTrue(len(songs) > 0)
+        s1 = songs[0]
+
+        # Tag s1 as 1995 Telugu Devotional
+        self.client.put(f"/api/media/{s1['id']}", json={
+            "year": 1995,
+            "language": "Telugu",
+            "genre": "Devotional"
+        })
+
+        # 1. Check auto-generated smart groups API
+        res = self.client.get("/api/playlists/smart")
+        self.assertEqual(res.status_code, 200)
+        smart_groups = res.json().get("smart_playlists", [])
+        self.assertIsInstance(smart_groups, list)
+        titles = [sg["name"] for sg in smart_groups]
+        # Should include combinations like "1990s TELUGU" or "DEVOTIONAL TELUGU"
+        self.assertTrue(any("1990s" in t and "TELUGU" in t for t in titles) or any("DEVOTIONAL" in t and "TELUGU" in t for t in titles))
+
+        # 2. Query virtual smart playlist directly by smart ID
+        smart_id = "smart:era-lang:1990s:Telugu"
+        res = self.client.get(f"/api/playlists/{smart_id}")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["playlist"]["name"], "1990s TELUGU")
+        self.assertTrue(any(s["id"] == s1["id"] for s in data["songs"]))
+
+        # 3. Create persistent custom smart playlist with criteria
+        res = self.client.post("/api/playlists", json={
+            "name": "Custom 1990s Telugu",
+            "is_smart": True,
+            "criteria": {
+                "decade": "1990s",
+                "language": "Telugu"
+            }
+        })
+        self.assertEqual(res.status_code, 200)
+        created_pl = res.json()
+        pl_id = created_pl["id"]
+
+        # Check detail returns matching songs
+        res = self.client.get(f"/api/playlists/{pl_id}")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(any(s["id"] == s1["id"] for s in res.json()["songs"]))
+
+        # Cleanup
+        self.client.delete(f"/api/playlists/{pl_id}")
+
+    def test_import_m3u_playlist(self):
+        songs = self.client.get("/api/songs").json().get("songs", [])
+        self.assertTrue(len(songs) > 0)
+        s1 = songs[0]
+
+        # Construct an M3U content referencing s1
+        m3u_text = f"""#EXTM3U
+#EXTINF:{int(s1.get('duration', 180))},{s1.get('artist', 'Artist')} - {s1.get('title', 'Title')}
+{s1.get('path', 'dummy.mp3')}
+"""
+        files = {
+            "file": ("roadtrip.m3u", io.BytesIO(m3u_text.encode("utf-8")), "audio/x-mpegurl")
+        }
+        res = self.client.post("/api/playlists/import", files=files)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["name"], "roadtrip")
+        self.assertEqual(data["total_tracks"], 1)
+        self.assertGreaterEqual(data["matched_tracks"], 1)
+        imported_id = data["playlist_id"]
+
+        # Verify imported playlist songs
+        res = self.client.get(f"/api/playlists/{imported_id}/songs")
+        self.assertEqual(res.status_code, 200)
+        imported_songs = res.json().get("songs", [])
+        self.assertEqual(len(imported_songs), 1)
+        self.assertEqual(imported_songs[0]["id"], s1["id"])
+
+        # Cleanup
+        self.client.delete(f"/api/playlists/{imported_id}")
+
 if __name__ == "__main__":
     unittest.main()

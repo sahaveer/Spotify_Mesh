@@ -1,6 +1,7 @@
 import os
 import re
 import io
+import json
 import time
 import uuid
 import shutil
@@ -97,6 +98,9 @@ class UpdateMediaMetadataRequest(BaseModel):
 class CreatePlaylistRequest(BaseModel):
     name: str
     description: Optional[str] = ""
+    is_smart: Optional[bool] = False
+    criteria: Optional[Dict[str, Any]] = None
+    song_ids: Optional[List[str]] = None
 
 class UpdatePlaylistRequest(BaseModel):
     name: Optional[str] = None
@@ -1553,8 +1557,42 @@ def list_playlists():
 def create_new_playlist(body: CreatePlaylistRequest):
     if not body.name.strip():
         raise HTTPException(status_code=400, detail="Playlist name cannot be empty")
-    pid = database.create_playlist(body.name.strip(), getattr(body, "description", "") or "")
+    rules_str = json.dumps(body.criteria) if body.criteria else ""
+    pid = database.create_playlist(
+        name=body.name.strip(),
+        description=getattr(body, "description", "") or "",
+        is_smart=bool(body.is_smart),
+        rules=rules_str
+    )
+    if body.criteria:
+        matching_songs = database.get_songs(
+            genre=body.criteria.get("genre"),
+            language=body.criteria.get("language"),
+            decade=body.criteria.get("decade"),
+            year=body.criteria.get("year")
+        )
+        sids = [s["id"] for s in matching_songs]
+        if sids:
+            database.add_songs_to_playlist(pid, sids)
+    elif body.song_ids:
+        database.add_songs_to_playlist(pid, body.song_ids)
+
     return {"id": pid, "name": body.name.strip(), "description": getattr(body, "description", "") or ""}
+
+@app.get("/api/playlists/smart")
+def get_smart_playlists(media_type: str = "audio"):
+    return {"smart_playlists": database.get_auto_generated_playlists(media_type)}
+
+@app.post("/api/playlists/import")
+async def import_playlist_endpoint(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith((".m3u", ".m3u8", ".txt")):
+        raise HTTPException(status_code=400, detail="Invalid playlist format. Please upload an .m3u or .m3u8 file.")
+    try:
+        content = (await file.read()).decode("utf-8", errors="ignore")
+        result = database.import_playlist_m3u(content, file.filename)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to import playlist: {e}")
 
 @app.get("/api/playlists/{playlist_id}")
 def get_playlist_details(playlist_id: str):
