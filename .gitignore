@@ -20,4 +20,10 @@ data/*.mkv
 .DS_Store
 Thumbs.db
 bin/
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db.corrupted*
+data/*.bak
+data/settings.json
 

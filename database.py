@@ -4,8 +4,13 @@ import datetime
 import json
 import re
 import pathlib
+import logging
+import shutil
+import time
 from typing import List, Optional, Dict, Any
 from config import DB_PATH
+
+logger = logging.getLogger("database")
 
 def get_db_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30.0)
@@ -16,7 +21,48 @@ def get_db_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     return conn
 
+def check_db_integrity() -> bool:
+    if not DB_PATH.exists():
+        return True
+    try:
+        conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=5.0)
+        try:
+            res = conn.execute("PRAGMA quick_check;").fetchone()
+            return bool(res and res[0] == "ok")
+        finally:
+            conn.close()
+    except Exception:
+        return False
+
+def recover_corrupted_db():
+    ts = int(time.time())
+    backup_path = DB_PATH.with_suffix(f".corrupted_{ts}.bak")
+    logger.critical(f"SQLite database is malformed or corrupted! Backing up to {backup_path} and recreating clean database.")
+    try:
+        if DB_PATH.exists():
+            shutil.copy2(DB_PATH, backup_path)
+    except Exception as e:
+        logger.error(f"Failed to backup corrupted db: {e}")
+    for p in [DB_PATH, DB_PATH.with_name(DB_PATH.name + "-wal"), DB_PATH.with_name(DB_PATH.name + "-shm")]:
+        try:
+            if p.exists():
+                p.unlink()
+        except Exception:
+            pass
+
 def init_db():
+    if DB_PATH.exists() and not check_db_integrity():
+        recover_corrupted_db()
+    try:
+        _do_init_db()
+    except sqlite3.DatabaseError as e:
+        if any(w in str(e).lower() for w in ["malformed", "corrupt", "disk image"]):
+            recover_corrupted_db()
+            _do_init_db()
+        else:
+            raise
+
+def _do_init_db():
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""

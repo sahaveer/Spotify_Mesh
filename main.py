@@ -286,7 +286,14 @@ def get_connected_peers_list():
 @app.get("/api/status")
 def get_server_status(request: Request):
     current_settings = settings.load_settings()
-    stats = database.get_stats()
+    try:
+        stats = database.get_stats()
+    except Exception:
+        stats = {
+            "total_songs": 0, "total_videos": 0, "total_artists": 0,
+            "total_albums": 0, "total_duration": 0, "total_size": 0,
+            "total_photos": 0, "total_photo_size": 0, "pending_uploads": 0
+        }
     local_ip = mesh.get_local_ip()
     try:
         available_ips = run_server.get_local_ips()
